@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const multer = require('multer');
+const fs = require('fs');
 const { sequelize, User, Dump, History, Category } = require('./models');
 const { Op } = require('sequelize');
 
@@ -13,12 +14,17 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Ensure uploads directory exists and serve static files
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // Configure Multer for avatar uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, 'uploads'))
+        cb(null, uploadsDir)
     },
     filename: function (req, file, cb) {
         cb(null, Date.now() + '-' + file.originalname)
