@@ -20,6 +20,11 @@ const DumpEditor = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const [ownedGroups, setOwnedGroups] = useState([]);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [filteredList, setFilteredList] = useState(null);
+    const [selectedGroups, setSelectedGroups] = useState([]);
+
     // Modal state
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingIndex, setEditingIndex] = useState(-1);
@@ -45,32 +50,55 @@ const DumpEditor = () => {
             setCategory(dump.category || 'Uncategorized');
             setQuestions(dump.questions);
         }
+        (async () => {
+            try {
+                const data = await api.getGroups();
+                setOwnedGroups(data.owned || []);
+            } catch {
+                setOwnedGroups([]);
+            }
+        })();
     }, [isEditMode, id, dump]);
 
     const loadDump = async () => {
         setLoading(true);
         setError('');
         try {
-            // Fetch all dumps and find the one matching the ID
-            // Note: IDs are UUIDs, so we need string comparison, not parseInt
-            const dumps = await api.getDumps('my');
-            const found = dumps.find(d => String(d.id) === String(id));
+            const found = await api.getDumpById(id);
             if (found) {
-                setDump(found); // Set the dump object itself
+                setDump(found);
                 setName(found.name);
                 setIsPublic(found.isPublic);
                 setTimeLimit(found.timeLimit);
                 setShowAnswerImmediately(found.showAnswerImmediately !== undefined ? found.showAnswerImmediately : true);
                 setCategory(found.category || 'Uncategorized');
                 setQuestions(found.questions || []);
-                setError(''); // Clear any previous errors
+                setError('');
             } else {
                 setError('Dump not found');
-                setDump(null); // Clear dump state
+                setDump(null);
             }
         } catch (err) {
-            setError(err.message || 'Failed to load dump');
-            setDump(null); // Clear dump state on error
+            try {
+                const all = await api.getAllDumps('', '');
+                const found = all.find(d => String(d.id) === String(id));
+                if (found) {
+                    setDump(found);
+                    setName(found.name);
+                    setIsPublic(found.isPublic);
+                    setTimeLimit(found.timeLimit);
+                    setShowAnswerImmediately(found.showAnswerImmediately !== undefined ? found.showAnswerImmediately : true);
+                    setCategory(found.category || 'Uncategorized');
+                    setQuestions(found.questions || []);
+                    setError('');
+                } else {
+                    setError(err.message || 'Failed to load dump');
+                    setDump(null);
+                }
+            } catch (err2) {
+                setError(err.message || err2.message || 'Failed to load dump');
+                setDump(null);
+            }
         } finally {
             setLoading(false);
         }
@@ -103,6 +131,19 @@ const DumpEditor = () => {
             await api.exportDump(id, name);
         } catch (err) {
             alert('Export failed: ' + err.message);
+        }
+    };
+
+    const submitShareToGroups = async () => {
+        if (!isEditMode) return;
+        try {
+            await api.setDumpGroups(id, selectedGroups.map(g => g.id));
+            setShowShareModal(false);
+            setSelectedGroups([]);
+            setFilteredList(null);
+            alert('Share settings saved');
+        } catch (err) {
+            alert(err.message);
         }
     };
 
@@ -491,6 +532,24 @@ const DumpEditor = () => {
                                     disabled={loading}
                                 />
                             </label>
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        const current = await api.getDumpGroups(id);
+                                        const ownedIds = new Set(ownedGroups.map(g => g.id));
+                                        const preselect = current.filter(g => ownedIds.has(g.id));
+                                        setSelectedGroups(preselect);
+                                    } catch {
+                                        setSelectedGroups([]);
+                                    }
+                                    setShowShareModal(true);
+                                }}
+                                className="control-button tertiary"
+                                disabled={loading}
+                                title="Share this dump to your groups"
+                            >
+                                Share to Groups
+                            </button>
                         </div>
                     )}
                     
@@ -514,6 +573,56 @@ const DumpEditor = () => {
                     </div>
                 </div>
             </div>
+
+            {showShareModal && (
+                <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h3>Share to Your Groups</h3>
+                        <div className="input-wrapper" style={{ marginTop: '0.75rem' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>🔎</span>
+                            <input
+                                type="text"
+                                placeholder="Filter groups"
+                                onChange={(e) => {
+                                    const q = e.target.value.toLowerCase();
+                                    const all = [...ownedGroups];
+                                    const filtered = all.filter(g => (g.name || '').toLowerCase().includes(q));
+                                    setFilteredList(filtered);
+                                }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', color: 'var(--text-secondary)' }}>
+                            <span>{selectedGroups.length} selected</span>
+                            <button className="btn-text" onClick={() => setSelectedGroups([])}>Clear selection</button>
+                        </div>
+                        <div style={{ maxHeight: '260px', overflow: 'auto', margin: '1rem 0' }}>
+                            {(filteredList ?? ownedGroups).map(g => {
+                                const checked = selectedGroups.some(s => s.id === g.id);
+                                return (
+                                    <label key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 8px', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setSelectedGroups(prev => [...prev, g]);
+                                                    else setSelectedGroups(prev => prev.filter(s => s.id !== g.id));
+                                                }}
+                                            />
+                                            <strong>{g.name}</strong>
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div className="modal-actions" style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="control-button secondary" onClick={() => setShowShareModal(false)}>Cancel</button>
+                            <button className="control-button secondary" onClick={async () => { try { await api.setDumpGroups(id, []); setSelectedGroups([]); setShowShareModal(false); alert('Unshared from all groups'); } catch (err) { alert(err.message); } }}>Unshare All</button>
+                            <button className="control-button primary" onClick={submitShareToGroups}>Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Duplicate Handling Modal */}
             {showDuplicateModal && duplicateData && (

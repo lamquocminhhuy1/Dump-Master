@@ -6,8 +6,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const multer = require('multer');
 const fs = require('fs');
-const { sequelize, User, Dump, History, Category } = require('./models');
-const { Op } = require('sequelize');
+const { sequelize, User, Dump, History, Category, Group, GroupRole, GroupMember, GroupInvitation, GroupDump, Question } = require('./models');
+const { Op, DataTypes } = require('sequelize');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,7 +57,15 @@ app.use(cors());
 
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        let { username, password } = req.body;
+        username = String(username || '').trim();
+        password = String(password || '');
+        if (!username) return res.status(400).json({ error: 'Username is required' });
+        if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+        const existing = await User.findOne({ where: { username } });
+        if (existing) return res.status(400).json({ error: 'Username already taken' });
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // First user is admin? Or just default user.
@@ -82,7 +90,11 @@ app.post('/api/auth/register', async (req, res) => {
             } 
         });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ error: 'Username already taken' });
+        }
+        console.error('Register error:', error);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -238,35 +250,77 @@ app.get('/api/dumps/shared/:id', async (req, res) => {
 
 app.get('/api/dumps', authenticateToken, async (req, res) => {
     try {
-        const { type, search, category } = req.query; // 'my' or 'public', search term, category
+        const { type, search, category } = req.query;
         let whereClause = {};
-
+        let dumps;
         if (type === 'public') {
             whereClause.isPublic = true;
+            dumps = await Dump.findAll({
+                where: whereClause,
+                include: [{ model: User, attributes: ['username', 'avatar'] }],
+                order: [['createdAt', 'DESC']]
+            });
+        } else if (type === 'group') {
+            const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
+            const groupIds = memberships.map(m => m.GroupId);
+            dumps = await Dump.findAll({
+                include: [
+                    { model: Group, through: { model: GroupDump }, where: { id: groupIds, isActive: true }, required: true },
+                    { model: User, attributes: ['username', 'avatar'] }
+                ],
+                order: [['createdAt', 'DESC']]
+            });
         } else {
             whereClause.UserId = req.user.id;
+            dumps = await Dump.findAll({
+                where: whereClause,
+                include: [{ model: User, attributes: ['username', 'avatar'] }],
+                order: [['createdAt', 'DESC']]
+            });
         }
 
         if (search) {
-            whereClause.name = { [Op.like]: `%${search}%` };
+            dumps = dumps.filter(d => (d.name || '').toLowerCase().includes(String(search).toLowerCase()));
         }
 
         // Only filter by category if it's specified and not 'All'
         if (category && category !== 'All' && category !== '' && category !== 'undefined') {
-            whereClause.category = category;
+            dumps = dumps.filter(d => d.category === category);
         }
-
-        const dumps = await Dump.findAll({
-            where: whereClause,
-            include: [{ model: User, attributes: ['username', 'avatar'] }],
-            order: [['createdAt', 'DESC']]
-        });
         res.json(dumps);
     } catch (error) {
         console.error('Error in GET /api/dumps:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
+// Get single dump by ID with authorization
+app.get('/api/dumps/:id', authenticateToken, async (req, res) => {
+    try {
+        const dump = await Dump.findByPk(req.params.id, {
+            include: [
+                { model: User, attributes: ['username', 'avatar'] },
+                { model: Group, through: { model: GroupDump } }
+            ]
+        });
+        if (!dump) return res.status(404).json({ error: 'Dump not found' });
+
+        // Authorization: owner, admin, or member of any group linked to dump
+        if (dump.UserId !== req.user.id && req.user.role !== 'admin') {
+            const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
+            const userGroupIds = new Set(memberships.map(m => m.GroupId));
+            const dumpGroupIds = new Set((dump.Groups || []).map(g => g.id));
+            const allowed = [...dumpGroupIds].some(id => userGroupIds.has(id));
+            if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+        }
+
+        res.json(dump);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Group Routes
 
 app.post('/api/dumps', authenticateToken, async (req, res) => {
     try {
@@ -280,6 +334,18 @@ app.post('/api/dumps', authenticateToken, async (req, res) => {
             category: category || 'Uncategorized',
             UserId: req.user.id
         });
+        if (Array.isArray(questions)) {
+            const rows = questions.map(q => ({
+                text: q.question || '',
+                optionA: q.options?.A || '',
+                optionB: q.options?.B || '',
+                optionC: q.options?.C || '',
+                optionD: q.options?.D || '',
+                correctAnswer: q.correctAnswer || 'A',
+                DumpId: dump.id
+            }));
+            await Question.bulkCreate(rows);
+        }
         res.json(dump);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -304,6 +370,19 @@ app.put('/api/dumps/:id', authenticateToken, async (req, res) => {
             showAnswerImmediately,
             category
         });
+        if (Array.isArray(questions)) {
+            await Question.destroy({ where: { DumpId: dump.id } });
+            const rows = questions.map(q => ({
+                text: q.question || '',
+                optionA: q.options?.A || '',
+                optionB: q.options?.B || '',
+                optionC: q.options?.C || '',
+                optionD: q.options?.D || '',
+                correctAnswer: q.correctAnswer || 'A',
+                DumpId: dump.id
+            }));
+            await Question.bulkCreate(rows);
+        }
         res.json(dump);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -342,14 +421,27 @@ app.get('/api/dumps/:id/export', authenticateToken, async (req, res) => {
         
         // Flatten questions for export (options object -> optionA, optionB, etc.)
         // Exclude the id field as it's not needed in the exported file
-        const flattenedQuestions = dump.questions.map(q => ({
-            question: q.question || '',
-            optionA: q.options?.A || '',
-            optionB: q.options?.B || '',
-            optionC: q.options?.C || '',
-            optionD: q.options?.D || '',
-            correctAnswer: q.correctAnswer || ''
-        }));
+        let flattenedQuestions = [];
+        const qRows = await Question.findAll({ where: { DumpId: dump.id } });
+        if (qRows.length > 0) {
+            flattenedQuestions = qRows.map(r => ({
+                question: r.text || '',
+                optionA: r.optionA || '',
+                optionB: r.optionB || '',
+                optionC: r.optionC || '',
+                optionD: r.optionD || '',
+                correctAnswer: r.correctAnswer || ''
+            }));
+        } else {
+            flattenedQuestions = (dump.questions || []).map(q => ({
+                question: q.question || '',
+                optionA: q.options?.A || '',
+                optionB: q.options?.B || '',
+                optionC: q.options?.C || '',
+                optionD: q.options?.D || '',
+                correctAnswer: q.correctAnswer || ''
+            }));
+        }
 
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(flattenedQuestions);
@@ -537,6 +629,17 @@ app.post('/api/dumps/:id/import', authenticateToken, upload.single('file'), asyn
         // Update dump
         dump.questions = finalQuestions;
         await dump.save();
+        await Question.destroy({ where: { DumpId: dump.id } });
+        const rows = finalQuestions.map(q => ({
+            text: q.question || '',
+            optionA: q.options?.A || '',
+            optionB: q.options?.B || '',
+            optionC: q.options?.C || '',
+            optionD: q.options?.D || '',
+            correctAnswer: q.correctAnswer || 'A',
+            DumpId: dump.id
+        }));
+        await Question.bulkCreate(rows);
 
         // Clean up uploaded file
         const fs = require('fs');
@@ -681,12 +784,11 @@ app.get('/api/admin/categories', authenticateToken, requireAdmin, async (req, re
 
 app.post('/api/admin/categories', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { code, name, description } = req.body;
+        const { code, name, description, isPublic, groupId } = req.body;
         if (!code || !name) {
             return res.status(400).json({ error: 'Code and name are required' });
         }
-
-        const category = await Category.create({ code, name, description });
+        const category = await Category.create({ code, name, description, isPublic: isPublic !== undefined ? !!isPublic : true, GroupId: groupId || null });
         res.json(category);
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -698,11 +800,10 @@ app.post('/api/admin/categories', authenticateToken, requireAdmin, async (req, r
 
 app.put('/api/admin/categories/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { code, name, description } = req.body;
+        const { code, name, description, isPublic, groupId } = req.body;
         const category = await Category.findByPk(req.params.id);
         if (!category) return res.status(404).json({ error: 'Category not found' });
-
-        await category.update({ code, name, description });
+        await category.update({ code, name, description, isPublic: isPublic !== undefined ? !!isPublic : category.isPublic, GroupId: groupId !== undefined ? groupId || null : category.GroupId });
         res.json(category);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -743,6 +844,246 @@ app.get('/api/admin/dumps', authenticateToken, requireAdmin, async (req, res) =>
             order: [['createdAt', 'DESC']]
         });
         res.json(dumps);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin - Questions list
+app.get('/api/admin/questions', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { search = '', groupId = '', exact = '' } = req.query;
+        const recordRows = await Question.findAll({
+            include: [
+                {
+                    model: Dump,
+                    include: [
+                        { model: User, attributes: ['username'] },
+                        { model: Group, through: { model: GroupDump }, ...(groupId ? { where: { id: groupId, isActive: true }, required: true } : {}) }
+                    ]
+                }
+            ],
+            order: [[sequelize.col('Dump.createdAt'), 'DESC']]
+        });
+
+        let filteredRecords = recordRows;
+        if (search) {
+            const q = String(search).toLowerCase();
+            const isExact = String(exact) === '1' || String(exact).toLowerCase() === 'true';
+            filteredRecords = filteredRecords.filter(r => {
+                const text = (r.text || '').toLowerCase();
+                const dumpName = (r.Dump?.name || '').toLowerCase();
+                return isExact ? (text === q || dumpName === q) : (text.includes(q) || dumpName.includes(q));
+            });
+        }
+
+        if (filteredRecords.length > 0) {
+            return res.json(filteredRecords);
+        }
+
+        const dumps = await Dump.findAll({
+            include: [
+                { model: User, attributes: ['username'] },
+                { model: Group, through: { model: GroupDump }, ...(groupId ? { where: { id: groupId, isActive: true }, required: true } : {}) }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        let fallback = [];
+        for (const dump of dumps) {
+            const dq = Array.isArray(dump.questions) ? dump.questions : [];
+            const dumpJson = {
+                name: dump.name,
+                User: { username: dump.User?.username || '' },
+                Groups: (dump.Groups || []).map(g => ({ name: g.name }))
+            };
+            dq.forEach((q, idx) => {
+                fallback.push({
+                    id: `${dump.id}:${idx}`,
+                    text: q.question || '',
+                    Dump: dumpJson
+                });
+            });
+        }
+
+        if (search) {
+            const q = String(search).toLowerCase();
+            const isExact = String(exact) === '1' || String(exact).toLowerCase() === 'true';
+            fallback = fallback.filter(r => {
+                const text = (r.text || '').toLowerCase();
+                const dumpName = (r.Dump?.name || '').toLowerCase();
+                return isExact ? (text === q || dumpName === q) : (text.includes(q) || dumpName.includes(q));
+            });
+        }
+        res.json(fallback);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin - Delete a question record and sync dump JSON
+app.delete('/api/admin/questions/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const q = await Question.findByPk(req.params.id, { include: [{ model: Dump }] });
+        if (!q) return res.status(404).json({ error: 'Question not found' });
+        const dump = q.Dump;
+        if (!dump) return res.status(404).json({ error: 'Parent dump not found' });
+
+        const existing = Array.isArray(dump.questions) ? dump.questions : [];
+        const idx = existing.findIndex(x => String(x.question || '').trim() === String(q.text || '').trim());
+        if (idx !== -1) {
+            existing.splice(idx, 1);
+            dump.questions = existing;
+            await dump.save();
+        }
+        await q.destroy();
+        return res.json({ message: 'Question deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin - Export questions with filters
+app.get('/api/admin/questions/export', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { search = '', groupId = '', exact = '' } = req.query;
+        const rows = await Question.findAll({
+            include: [{
+                model: Dump,
+                include: [
+                    { model: User, attributes: ['username'] },
+                    { model: Group, through: { model: GroupDump }, ...(groupId ? { where: { id: groupId, isActive: true }, required: true } : {}) }
+                ]
+            }],
+            order: [[sequelize.col('Dump.createdAt'), 'DESC']]
+        });
+
+        let dataRows = rows;
+        if (search) {
+            const q = String(search).toLowerCase();
+            const isExact = String(exact) === '1' || String(exact).toLowerCase() === 'true';
+            dataRows = dataRows.filter(r => {
+                const text = (r.text || '').toLowerCase();
+                const dumpName = (r.Dump?.name || '').toLowerCase();
+                return isExact ? (text === q || dumpName === q) : (text.includes(q) || dumpName.includes(q));
+            });
+        }
+
+        if (dataRows.length === 0) {
+            const dumps = await Dump.findAll({
+                include: [
+                    { model: User, attributes: ['username'] },
+                    { model: Group, through: { model: GroupDump }, ...(groupId ? { where: { id: groupId, isActive: true }, required: true } : {}) }
+                ],
+                order: [['createdAt', 'DESC']]
+            });
+            let fb = [];
+            for (const dump of dumps) {
+                const dq = Array.isArray(dump.questions) ? dump.questions : [];
+                dq.forEach(q => fb.push({ text: q.question || '', Dump: dump }));
+            }
+            if (search) {
+                const q = String(search).toLowerCase();
+                const isExact = String(exact) === '1' || String(exact).toLowerCase() === 'true';
+                fb = fb.filter(r => {
+                    const text = (r.text || '').toLowerCase();
+                    const dumpName = (r.Dump?.name || '').toLowerCase();
+                    return isExact ? (text === q || dumpName === q) : (text.includes(q) || dumpName.includes(q));
+                });
+            }
+            dataRows = fb;
+        }
+
+        const XLSX = require('xlsx');
+        const data = dataRows.map(r => ({
+            question: r.text || '',
+            dump: r.Dump?.name || '',
+            owner: r.Dump?.User?.username || '',
+            groups: (r.Dump?.Groups || []).map(g => g.name).join(', ')
+        }));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, 'Questions');
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Disposition', `attachment; filename="admin_questions.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Group Categories endpoints
+app.get('/api/groups/:id/categories', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (!group.isActive) return res.status(403).json({ error: 'Group is inactive' });
+        // Owner or admin or member can view
+        const membership = await GroupMember.findOne({ where: { GroupId: group.id, UserId: req.user.id } });
+        if (!membership && group.UserId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Not authorized' });
+        }
+        const categories = await Category.findAll({ where: { GroupId: group.id } });
+        res.json(categories);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/groups/:id/categories', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        // Only owner or admin can create categories for group
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        let { code, name, description } = req.body;
+        code = String(code || '').trim();
+        name = String(name || '').trim();
+        description = String(description || '').trim();
+        if (!code || !name) return res.status(400).json({ error: 'Code and name are required' });
+        const existingCode = await Category.findOne({ where: { code } });
+        if (existingCode) return res.status(400).json({ error: 'Category code already exists' });
+        const cat = await Category.create({ code, name, description, GroupId: group.id, isPublic: false });
+        res.json(cat);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/admin/groups', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const groups = await Group.findAll({ include: [{ model: User, attributes: ['username'] }] });
+        res.json(groups);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin - Toggle group active status
+app.put('/api/admin/groups/:id/active', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { isActive } = req.body;
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        group.isActive = !!isActive;
+        await group.save();
+        res.json({ message: 'Group status updated', group });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/admin/groups/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        await GroupMember.destroy({ where: { GroupId: group.id } });
+        await GroupRole.destroy({ where: { GroupId: group.id } });
+        await GroupDump.destroy({ where: { GroupId: group.id } });
+        await GroupInvitation.destroy({ where: { GroupId: group.id } });
+        await group.destroy();
+        res.json({ message: 'Group deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -812,17 +1153,68 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req, res) =>
     }
 });
 
+// Admin - History list by date
+app.get('/api/admin/history', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { date } = req.query;
+        const where = {};
+        if (date) {
+            const start = new Date(date);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(date);
+            end.setHours(23, 59, 59, 999);
+            where.createdAt = { [Op.between]: [start, end] };
+        }
+        const rows = await History.findAll({
+            where,
+            include: [
+                { model: User, attributes: ['username'] },
+                { model: Dump, attributes: ['name'] }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Groups
+
 
 // Serve Static Files (Frontend)
-app.use(express.static(path.join(__dirname, '../dist')));
-
-app.get(/.*/, (req, res) => {
-    res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
 
 // Initialize DB and Start Server
 sequelize.sync().then(async () => {
     console.log('Database synced');
+
+    // Ensure new columns exist on existing SQLite databases without using alter:true
+    try {
+        const qi = sequelize.getQueryInterface();
+        // Add isPublic to Categories if missing
+        try {
+            await qi.addColumn('Categories', 'isPublic', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true });
+            console.log('Added Categories.isPublic column');
+        } catch {
+            console.log('Categories.isPublic already exists');
+        }
+        // Add GroupId to Categories if missing
+        try {
+            await qi.addColumn('Categories', 'GroupId', { type: DataTypes.UUID, allowNull: true });
+            console.log('Added Categories.GroupId column');
+        } catch {
+            console.log('Categories.GroupId already exists');
+        }
+        // Add isActive to Groups if missing
+        try {
+            await qi.addColumn('Groups', 'isActive', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true });
+            console.log('Added Groups.isActive column');
+        } catch {
+            console.log('Groups.isActive already exists');
+        }
+    } catch (e) {
+        console.warn('Schema ensure step failed:', e.message);
+    }
 
     // Seed initial categories if none exist
     const categoryCount = await Category.count();
@@ -846,4 +1238,316 @@ sequelize.sync().then(async () => {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });
+});
+// Group Routes
+app.post('/api/groups', authenticateToken, async (req, res) => {
+    try {
+        let { name, description } = req.body;
+        name = String(name || '').trim();
+        description = String(description || '').trim();
+        if (!name) return res.status(400).json({ error: 'Group name is required' });
+        if (name.length > 100) return res.status(400).json({ error: 'Group name too long' });
+        const existing = await Group.findOne({ where: { UserId: req.user.id, name } });
+        if (existing) return res.status(400).json({ error: 'You already have a group with this name' });
+        const group = await Group.create({ name, description, UserId: req.user.id });
+        const adminRole = await GroupRole.create({ GroupId: group.id, name: 'admin', canCreate: true, canRead: true, canUpdate: true, canDelete: true });
+        await GroupMember.create({ GroupId: group.id, UserId: req.user.id, GroupRoleId: adminRole.id });
+        res.json(group);
+    } catch (error) {
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ error: 'Group name must be unique per owner' });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/groups/:id', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        let { name, description } = req.body;
+        name = String(name || '').trim();
+        description = String(description || '').trim();
+        if (!name) return res.status(400).json({ error: 'Group name is required' });
+        if (name.length > 100) return res.status(400).json({ error: 'Group name too long' });
+        const duplicate = await Group.findOne({ where: { UserId: group.UserId, name } });
+        if (duplicate && duplicate.id !== group.id) return res.status(400).json({ error: 'You already have a group with this name' });
+        await group.update({ name, description });
+        res.json(group);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/groups', authenticateToken, async (req, res) => {
+    try {
+        const owned = await Group.findAll({ where: { UserId: req.user.id } });
+        const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
+        const groupIds = memberships.map(m => m.GroupId);
+        const memberGroups = await Group.findAll({ where: { id: groupIds } });
+        res.json({ owned, member: memberGroups });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/groups/summary', authenticateToken, async (req, res) => {
+    try {
+        const owned = await Group.findAll({ include: [{ model: User, attributes: ['username'] }], where: { UserId: req.user.id } });
+        const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
+        const groupIds = memberships.map(m => m.GroupId);
+        const memberGroups = await Group.findAll({ include: [{ model: User, attributes: ['username'] }], where: { id: groupIds } });
+        const ownedIds = owned.map(g => g.id);
+        const all = [...owned, ...memberGroups.filter(g => !ownedIds.includes(g.id))];
+        const results = [];
+        for (const g of all) {
+            const count = await GroupMember.count({ where: { GroupId: g.id } });
+            results.push({
+                id: g.id,
+                name: g.name,
+                description: g.description,
+                owner: g.User?.username || '',
+                memberCount: count,
+                updatedAt: g.updatedAt,
+                type: g.UserId === req.user.id ? 'owned' : 'member'
+            });
+        }
+        res.json(results);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/groups/:id/invitations', authenticateToken, async (req, res) => {
+    try {
+        const { inviteeUsername } = req.body;
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (!group.isActive) return res.status(403).json({ error: 'Group is inactive' });
+        if (group.UserId !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+        const token = require('crypto').randomBytes(16).toString('hex');
+        const invitee = await User.findOne({ where: { username: inviteeUsername } });
+        if (invitee) {
+            const memberRole = await GroupRole.findOne({ where: { GroupId: group.id, name: 'member' } }) || await GroupRole.create({ GroupId: group.id, name: 'member', canRead: true });
+            await GroupMember.findOrCreate({ where: { GroupId: group.id, UserId: invitee.id }, defaults: { GroupRoleId: memberRole.id } });
+            return res.json({ message: 'User added to group' });
+        }
+        const invitation = await GroupInvitation.create({ GroupId: group.id, token, inviteeUsername, inviterId: req.user.id });
+        res.json({ token, invitation });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/invitations/:token/accept', authenticateToken, async (req, res) => {
+    try {
+        const invitation = await GroupInvitation.findOne({ where: { token: req.params.token } });
+        if (!invitation) return res.status(404).json({ error: 'Invitation not found' });
+        const group = await Group.findByPk(invitation.GroupId);
+        if (group && !group.isActive) return res.status(403).json({ error: 'Group is inactive' });
+        const memberRole = await GroupRole.findOne({ where: { GroupId: invitation.GroupId, name: 'member' } }) || await GroupRole.create({ GroupId: invitation.GroupId, name: 'member', canRead: true });
+        await GroupMember.findOrCreate({ where: { GroupId: invitation.GroupId, UserId: req.user.id }, defaults: { GroupRoleId: memberRole.id } });
+        invitation.status = 'accepted';
+        await invitation.save();
+        res.json({ message: 'Joined group' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/dumps/:id/share/groups', authenticateToken, async (req, res) => {
+    try {
+        const { groupIds } = req.body;
+        const dump = await Dump.findByPk(req.params.id);
+        if (!dump) return res.status(404).json({ error: 'Dump not found' });
+        if (dump.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const validGroups = await Group.findAll({ where: { id: groupIds, isActive: true } });
+        for (const g of validGroups) {
+            await GroupDump.findOrCreate({ where: { GroupId: g.id, DumpId: dump.id } });
+        }
+        res.json({ message: 'Shared to groups' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get groups a dump is shared to (owner/admin only)
+app.get('/api/dumps/:id/groups', authenticateToken, async (req, res) => {
+    try {
+        const dump = await Dump.findByPk(req.params.id);
+        if (!dump) return res.status(404).json({ error: 'Dump not found' });
+        if (dump.UserId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Not authorized' });
+        }
+        const groups = await Group.findAll({
+            include: [{ model: Dump, through: { model: GroupDump }, where: { id: dump.id }, required: true }],
+            where: { isActive: true }
+        });
+        res.json(groups);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Replace dump's shared groups with provided list (owner/admin only)
+app.put('/api/dumps/:id/share/groups', authenticateToken, async (req, res) => {
+    try {
+        const { groupIds = [] } = req.body;
+        const dump = await Dump.findByPk(req.params.id);
+        if (!dump) return res.status(404).json({ error: 'Dump not found' });
+        if (dump.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+
+        const existing = await GroupDump.findAll({ where: { DumpId: dump.id } });
+        const existingIds = new Set(existing.map(r => r.GroupId));
+        const desiredIds = new Set(groupIds);
+
+        // Delete associations not desired
+        const toDelete = existing.filter(r => !desiredIds.has(r.GroupId));
+        for (const r of toDelete) {
+            await r.destroy();
+        }
+
+        // Ensure desired associations exist
+        if (groupIds.length > 0) {
+            const validGroups = await Group.findAll({ where: { id: groupIds, isActive: true } });
+            for (const g of validGroups) {
+                if (!existingIds.has(g.id)) {
+                    await GroupDump.findOrCreate({ where: { GroupId: g.id, DumpId: dump.id } });
+                }
+            }
+        }
+
+        res.json({ message: 'Share settings updated', groupIds });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Group Roles Management
+app.get('/api/groups/:id/roles', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        // Owner or admin can view/manage roles; members can view
+        const membership = await GroupMember.findOne({ where: { GroupId: group.id, UserId: req.user.id } });
+        if (!membership && group.UserId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Not authorized' });
+        }
+        const roles = await GroupRole.findAll({ where: { GroupId: group.id } });
+        res.json(roles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/groups/:id/roles', authenticateToken, async (req, res) => {
+    try {
+        const { name, canCreate = false, canRead = true, canUpdate = false, canDelete = false } = req.body;
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const role = await GroupRole.create({ GroupId: group.id, name, canCreate, canRead, canUpdate, canDelete });
+        res.json(role);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/groups/:groupId/roles/:roleId', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const role = await GroupRole.findOne({ where: { id: req.params.roleId, GroupId: group.id } });
+        if (!role) return res.status(404).json({ error: 'Role not found' });
+        const { name, canCreate, canRead, canUpdate, canDelete } = req.body;
+        await role.update({ name, canCreate, canRead, canUpdate, canDelete });
+        res.json(role);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/groups/:groupId/roles/:roleId', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const role = await GroupRole.findOne({ where: { id: req.params.roleId, GroupId: group.id } });
+        if (!role) return res.status(404).json({ error: 'Role not found' });
+        await role.destroy();
+        res.json({ message: 'Role deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Group Members Management
+app.get('/api/groups/:id/members', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.id);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        const membership = await GroupMember.findOne({ where: { GroupId: group.id, UserId: req.user.id } });
+        if (!membership && group.UserId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Not authorized' });
+        }
+        const members = await GroupMember.findAll({
+            where: { GroupId: group.id },
+            include: [
+                { model: User, attributes: ['id', 'username', 'avatar'] },
+                { model: GroupRole }
+            ]
+        });
+        res.json(members);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/groups/:groupId/members/:userId/role', authenticateToken, async (req, res) => {
+    try {
+        const { roleId } = req.body;
+        const group = await Group.findByPk(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const membership = await GroupMember.findOne({ where: { GroupId: group.id, UserId: req.params.userId } });
+        if (!membership) return res.status(404).json({ error: 'Member not found' });
+        const role = await GroupRole.findOne({ where: { id: roleId, GroupId: group.id } });
+        if (!role) return res.status(404).json({ error: 'Role not found' });
+        membership.GroupRoleId = role.id;
+        await membership.save();
+        res.json({ message: 'Member role updated' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Remove member from group (owner or admin)
+app.delete('/api/groups/:groupId/members/:userId', authenticateToken, async (req, res) => {
+    try {
+        const group = await Group.findByPk(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+        if (group.UserId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Not authorized' });
+        const membership = await GroupMember.findOne({ where: { GroupId: group.id, UserId: req.params.userId } });
+        if (!membership) return res.status(404).json({ error: 'Member not found' });
+        await membership.destroy();
+        res.json({ message: 'Member removed' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Static fallback must be last
+app.use(express.static(path.join(__dirname, '../dist')));
+app.get(/^\/(?!api).*/, (req, res) => {
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    try {
+        if (!fs.existsSync(indexPath)) {
+            return res.status(404).send('Not found');
+        }
+        res.sendFile(indexPath);
+    } catch {
+        res.status(500).send('Server error');
+    }
 });

@@ -127,7 +127,84 @@ const Category = sequelize.define('Category', {
     description: {
         type: DataTypes.STRING,
         allowNull: true
+    },
+    isPublic: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     }
+});
+
+const Group = sequelize.define('Group', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    description: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    isActive: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
+    }
+});
+
+const GroupRole = sequelize.define('GroupRole', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    canCreate: { type: DataTypes.BOOLEAN, defaultValue: false },
+    canRead: { type: DataTypes.BOOLEAN, defaultValue: true },
+    canUpdate: { type: DataTypes.BOOLEAN, defaultValue: false },
+    canDelete: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
+const GroupMember = sequelize.define('GroupMember', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    }
+});
+
+const GroupInvitation = sequelize.define('GroupInvitation', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    token: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    inviteeUsername: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    status: {
+        type: DataTypes.STRING,
+        defaultValue: 'pending'
+    }
+});
+
+const GroupDump = sequelize.define('GroupDump', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    canEdit: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
 // Relationships
@@ -140,4 +217,51 @@ History.belongsTo(User);
 Dump.hasMany(History);
 History.belongsTo(Dump);
 
-module.exports = { sequelize, User, Dump, History, Category };
+User.hasMany(Group);
+Group.belongsTo(User);
+
+Group.hasMany(GroupRole);
+GroupRole.belongsTo(Group);
+
+Group.belongsToMany(User, { through: GroupMember });
+User.belongsToMany(Group, { through: GroupMember });
+// Explicit associations for includes
+GroupMember.belongsTo(User);
+User.hasMany(GroupMember);
+GroupMember.belongsTo(Group);
+Group.hasMany(GroupMember);
+GroupMember.belongsTo(GroupRole);
+GroupRole.hasMany(GroupMember);
+
+Group.belongsToMany(Dump, { through: GroupDump });
+Dump.belongsToMany(Group, { through: GroupDump });
+
+GroupInvitation.belongsTo(Group);
+Group.hasMany(GroupInvitation);
+GroupInvitation.belongsTo(User, { as: 'inviter' });
+
+// Category visibility and ownership by Group (optional)
+Category.belongsTo(Group);
+Group.hasMany(Category);
+
+// Questions as records belonging to dumps
+const Question = sequelize.define('Question', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    text: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    optionA: { type: DataTypes.STRING, allowNull: true },
+    optionB: { type: DataTypes.STRING, allowNull: true },
+    optionC: { type: DataTypes.STRING, allowNull: true },
+    optionD: { type: DataTypes.STRING, allowNull: true },
+    correctAnswer: { type: DataTypes.STRING, allowNull: false }
+});
+Dump.hasMany(Question);
+Question.belongsTo(Dump);
+
+module.exports = { sequelize, User, Dump, History, Category, Group, GroupRole, GroupMember, GroupInvitation, GroupDump, Question };

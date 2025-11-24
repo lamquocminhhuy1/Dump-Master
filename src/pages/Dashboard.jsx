@@ -4,7 +4,7 @@ import { api } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import FileUpload from '../components/FileUpload';
 import { parseExcelFile } from '../utils/excelParser';
-import { Play, Trash2, Clock, Plus, Edit, Search, Loader2, Share2, Check } from 'lucide-react';
+import { Play, Trash2, Clock, Plus, Edit, Search, Loader2 } from 'lucide-react';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -12,13 +12,13 @@ const Dashboard = () => {
     const [showUpload, setShowUpload] = useState(false);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('my'); // 'my' or 'public'
+    const [activeTab, setActiveTab] = useState('my'); // 'my' | 'public' | 'group'
     const navigate = useNavigate();
 
     const [searchInput, setSearchInput] = useState('');
     const [category, setCategory] = useState('All');
     const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [sharedDumpId, setSharedDumpId] = useState(null);
+    
 
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(searchInput), 500);
@@ -71,50 +71,9 @@ const Dashboard = () => {
         }
     };
 
-    const handleShare = async (dump) => {
-        try {
-            // If dump is private, make it public first
-            if (!dump.isPublic) {
-                await api.updateDump(
-                    dump.id,
-                    dump.name,
-                    dump.questions,
-                    true, // Make it public
-                    dump.timeLimit,
-                    dump.showAnswerImmediately,
-                    dump.category
-                );
-                // Update local state
-                setDumps(prevDumps => 
-                    prevDumps.map(d => 
-                        d.id === dump.id ? { ...d, isPublic: true } : d
-                    )
-                );
-            }
+    
 
-            // Generate shareable link
-            const shareUrl = `${window.location.origin}/shared/${dump.id}`;
-            
-            // Copy to clipboard
-            try {
-                await navigator.clipboard.writeText(shareUrl);
-                setSharedDumpId(dump.id);
-                setTimeout(() => setSharedDumpId(null), 3000);
-            } catch {
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = shareUrl;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                setSharedDumpId(dump.id);
-                setTimeout(() => setSharedDumpId(null), 3000);
-            }
-        } catch {
-            alert('Failed to share dump');
-        }
-    };
+    
 
     const [showTour, setShowTour] = useState(false);
 
@@ -283,10 +242,16 @@ const Dashboard = () => {
                                 My Dumps
                             </button>
                             <button
+                                className={`tab-button ${activeTab === 'group' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('group')}
+                            >
+                                Group
+                            </button>
+                            <button
                                 className={`tab-button ${activeTab === 'public' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('public')}
                             >
-                                Public Library
+                                Public
                             </button>
                         </div>
                     </div>
@@ -452,17 +417,7 @@ const Dashboard = () => {
                                     </button>
 
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                        {/* Share Button - Show for all dumps */}
-                                        <button
-                                            className="icon-btn"
-                                            onClick={() => handleShare(dump)}
-                                            title={dump.isPublic ? "Copy share link" : "Share (will make public)"}
-                                            style={{ 
-                                                color: sharedDumpId === dump.id ? 'var(--sn-green)' : 'var(--text-secondary)'
-                                            }}
-                                        >
-                                            {sharedDumpId === dump.id ? <Check size={16} /> : <Share2 size={16} />}
-                                        </button>
+                                        
 
                                         {/* Edit and Delete - Only for owner/admin */}
                                         {(activeTab === 'my' || user.role === 'admin') && (
@@ -543,6 +498,8 @@ const Dashboard = () => {
                     )}
                 </div>
                 )}
+
+                
             </div>
         </div>
     );

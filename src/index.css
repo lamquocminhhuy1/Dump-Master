@@ -1334,6 +1334,25 @@ body {
   color: var(--text-primary);
 }
 
+.filter-row th input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-body);
+  color: var(--text-primary);
+}
+
+.admin-table th, .admin-table td {
+  vertical-align: middle;
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .admin-table tbody tr:hover {
   background: rgba(0, 0, 0, 0.02);
 }

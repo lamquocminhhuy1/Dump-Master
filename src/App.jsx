@@ -11,6 +11,7 @@ import DumpEditor from './pages/DumpEditor';
 import QuizInterface from './components/QuizInterface';
 import Results from './components/Results';
 import { BookOpen, LayoutDashboard, History, LogOut, Shield, Sun, Moon, User, Settings, Edit } from 'lucide-react';
+import GroupsPage from './pages/GroupsPage';
  
 import { api } from './utils/api';
 
@@ -409,6 +410,9 @@ const Navigation = () => {
         <Link to="/history" className="nav-link">
           History
         </Link>
+        <Link to="/groups" className="nav-link">
+          Groups
+        </Link>
         {user.role === 'admin' && (
           <Link to="/admin" className="nav-link">
             Admin
@@ -519,6 +523,16 @@ function AppContent() {
           <Route path="/shared/:id" element={
             <SharedDumpWrapper />
           } />
+          <Route path="/groups" element={
+            <ProtectedRoute>
+              <GroupsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/invite/:token" element={
+            <ProtectedRoute>
+              <InvitationAcceptWrapper />
+            </ProtectedRoute>
+          } />
         </Routes>
       </main>
       <footer className="app-footer">
@@ -541,3 +555,53 @@ function App() {
 }
 
 export default App;
+// Invitation Accept Wrapper - join group via token
+const InvitationAcceptWrapper = () => {
+  const { token } = useParams();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('pending');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const accept = async () => {
+      try {
+        await api.acceptInvitation(token);
+        setStatus('success');
+        setMessage('Joined group');
+      } catch (err) {
+        setStatus('error');
+        setMessage(err.message || 'Failed to accept invitation');
+      }
+    };
+    if (token) accept();
+  }, [token]);
+
+  return (
+    <div className="dashboard-container">
+      <div className="dump-card" style={{ padding: '2rem', margin: '2rem auto', maxWidth: '600px', textAlign: 'center' }}>
+        {status === 'pending' && (
+          <>
+            <div className="loading-spinner">Loading...</div>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>Accepting invitation...</p>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <div className="success-message" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid #22c55e', color: '#22c55e', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              {message}
+            </div>
+            <button className="control-button primary" onClick={() => navigate('/groups')}>Go to Groups</button>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <div className="error-message" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              {message}
+            </div>
+            <button className="control-button primary" onClick={() => navigate('/')}>Go to Dashboard</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};

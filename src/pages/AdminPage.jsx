@@ -8,17 +8,34 @@ const AdminPage = () => {
     const [users, setUsers] = useState([]);
     const [categories, setCategories] = useState([]);
     const [dumps, setDumps] = useState([]);
+    const [groups, setGroups] = useState([]);
+    const [showGroupModal, setShowGroupModal] = useState(false);
+    const [managingGroup, setManagingGroup] = useState(null);
+    const [groupMembers, setGroupMembers] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
 
     // Category modal state
     const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
-    const [categoryForm, setCategoryForm] = useState({ code: '', name: '', description: '' });
+    const [categoryForm, setCategoryForm] = useState({ code: '', name: '', description: '', isPublic: true, groupId: '' });
 
     // Dump filters
     const [dumpSearch, setDumpSearch] = useState('');
     const [dumpCategory, setDumpCategory] = useState('All');
+    const [questions, setQuestions] = useState([]);
+    const [questionSearch, setQuestionSearch] = useState('');
+    const [questionGroup, setQuestionGroup] = useState('');
+    const [questionExact, setQuestionExact] = useState(false);
+
+    const [userSearch, setUserSearch] = useState('');
+    const [userRole, setUserRole] = useState('All');
+    const [categorySearch, setCategorySearch] = useState('');
+    const [groupSearch, setGroupSearch] = useState('');
+    const [groupStatus, setGroupStatus] = useState('All');
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [historyRows, setHistoryRows] = useState([]);
+    const [historyDate, setHistoryDate] = useState('');
 
     const navigate = useNavigate();
 
@@ -29,6 +46,12 @@ const AdminPage = () => {
     useEffect(() => {
         if (activeTab === 'dumps') {
             loadDumps();
+        } else if (activeTab === 'groups') {
+            loadGroups();
+        } else if (activeTab === 'categories') {
+            if (groups.length === 0) loadGroups();
+        } else if (activeTab === 'questions') {
+            loadQuestions();
         }
     }, [dumpSearch, dumpCategory, activeTab]);
 
@@ -60,6 +83,67 @@ const AdminPage = () => {
         }
     };
 
+    const loadGroups = async () => {
+        try {
+            const groupsData = await api.getAllGroups();
+            setGroups(groupsData);
+        } catch (err) {
+            console.error("Failed to load groups", err);
+        }
+    };
+
+    const openManageGroup = async (group) => {
+        setManagingGroup(group);
+        try {
+            const members = await api.getGroupMembers(group.id);
+            setGroupMembers(members);
+            setShowGroupModal(true);
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const handleMemberRoleUpdate = async (userId, roleId) => {
+        if (!managingGroup) return;
+        try {
+            await api.updateGroupMemberRole(managingGroup.id, userId, roleId);
+            setGroupMembers(prev => prev.map(m => m.User.id === userId ? { ...m, GroupRoleId: roleId, GroupRole: { ...(m.GroupRole || {}), id: roleId } } : m));
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const handleRemoveMember = async (userId) => {
+        if (!managingGroup) return;
+        if (!window.confirm('Remove this member from the group?')) return;
+        try {
+            await api.removeGroupMember(managingGroup.id, userId);
+            setGroupMembers(prev => prev.filter(m => m.User.id !== userId));
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const loadQuestions = async () => {
+        try {
+            const rows = await api.getAllQuestions(questionSearch, questionGroup, questionExact);
+            setQuestions(rows);
+        } catch (err) {
+            console.error("Failed to load questions", err);
+        }
+    };
+
+    const openHistoryForDate = async (date) => {
+        try {
+            const rows = await api.getAdminHistory(date);
+            setHistoryRows(rows);
+            setHistoryDate(date);
+            setShowHistoryModal(true);
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
     // User Management
     const handleRoleChange = async (userId, newRole) => {
         try {
@@ -84,22 +168,22 @@ const AdminPage = () => {
     // Category Management
     const handleAddCategory = () => {
         setEditingCategory(null);
-        setCategoryForm({ code: '', name: '', description: '' });
+        setCategoryForm({ code: '', name: '', description: '', isPublic: true, groupId: '' });
         setShowCategoryModal(true);
     };
 
     const handleEditCategory = (category) => {
         setEditingCategory(category);
-        setCategoryForm({ code: category.code, name: category.name, description: category.description || '' });
+        setCategoryForm({ code: category.code, name: category.name, description: category.description || '', isPublic: !!category.isPublic, groupId: category.GroupId || '' });
         setShowCategoryModal(true);
     };
 
     const handleSaveCategory = async () => {
         try {
             if (editingCategory) {
-                await api.updateCategory(editingCategory.id, categoryForm.code, categoryForm.name, categoryForm.description);
+                await api.updateCategory(editingCategory.id, categoryForm.code, categoryForm.name, categoryForm.description, categoryForm.isPublic, categoryForm.groupId || null);
             } else {
-                await api.createCategory(categoryForm.code, categoryForm.name, categoryForm.description);
+                await api.createCategory(categoryForm.code, categoryForm.name, categoryForm.description, categoryForm.isPublic, categoryForm.groupId || null);
             }
             setShowCategoryModal(false);
             const categoriesData = await api.getCategories();
@@ -132,6 +216,17 @@ const AdminPage = () => {
         }
     };
 
+    const handleDeleteGroup = async (id) => {
+        if (window.confirm('Delete this group?')) {
+            try {
+                await api.deleteGroup(id);
+                setGroups(groups.filter(g => g.id !== id));
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+    };
+
     if (loading) return <div className="admin-container"><p>Loading...</p></div>;
 
     return (
@@ -150,6 +245,12 @@ const AdminPage = () => {
                     </button>
                     <button className={`tab-button ${activeTab === 'dumps' ? 'active' : ''}`} onClick={() => setActiveTab('dumps')}>
                         <FileText size={18} /> Dumps
+                    </button>
+                    <button className={`tab-button ${activeTab === 'groups' ? 'active' : ''}`} onClick={() => setActiveTab('groups')}>
+                        <Users size={18} /> Groups
+                    </button>
+                    <button className={`tab-button ${activeTab === 'questions' ? 'active' : ''}`} onClick={() => setActiveTab('questions')}>
+                        <FileText size={18} /> Questions
                     </button>
                 </div>
             </div>
@@ -193,7 +294,7 @@ const AdminPage = () => {
                                 </thead>
                                 <tbody>
                                     {stats.popularDumps.map((dump, idx) => (
-                                        <tr key={idx}>
+                                        <tr key={idx} onClick={() => { setActiveTab('dumps'); setDumpSearch(dump.dumpName); }} style={{ cursor: 'pointer' }}>
                                             <td>{dump.dumpName}</td>
                                             <td>{dump.attemptCount}</td>
                                         </tr>
@@ -213,9 +314,29 @@ const AdminPage = () => {
                                 </thead>
                                 <tbody>
                                     {stats.dumpsByCategory.map((cat, idx) => (
-                                        <tr key={idx}>
+                                        <tr key={idx} onClick={() => { setActiveTab('dumps'); setDumpCategory(cat.category || 'Uncategorized'); }} style={{ cursor: 'pointer' }}>
                                             <td>{cat.category || 'Uncategorized'}</td>
                                             <td>{cat.count}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h3 style={{ marginTop: '2rem' }}>Quizzes by Date (30 days)</h3>
+                        <div className="table-container">
+                            <table className="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Quizzes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {Object.entries(stats.quizzesByDate || {}).map(([date, count]) => (
+                                        <tr key={date} onClick={() => openHistoryForDate(date)} style={{ cursor: 'pointer' }}>
+                                            <td>{date}</td>
+                                            <td>{count}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -227,7 +348,20 @@ const AdminPage = () => {
                 {/* Users Tab */}
                 {activeTab === 'users' && (
                     <div className="users-management">
-                        <h3>User Management ({users.length} users)</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3>User Management ({users.length} users)</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div className="input-wrapper" style={{ width: '280px' }}>
+                                    <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                                    <input type="text" placeholder="Search username" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+                                </div>
+                                <select value={userRole} onChange={(e) => setUserRole(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                                    <option>All</option>
+                                    <option>user</option>
+                                    <option>admin</option>
+                                </select>
+                            </div>
+                        </div>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
@@ -242,7 +376,11 @@ const AdminPage = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {users.map(user => (
+                                    {users.filter(u => {
+                                        const q = userSearch.toLowerCase();
+                                        const roleOk = userRole === 'All' || u.role === userRole;
+                                        return roleOk && (!q || (u.username || '').toLowerCase().includes(q));
+                                    }).map(user => (
                                         <tr key={user.id}>
                                             <td>{user.username}</td>
                                             <td>
@@ -280,7 +418,13 @@ const AdminPage = () => {
                 {activeTab === 'categories' && (
                     <div className="categories-management">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h3>Category Management ({categories.length} categories)</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <h3>Category Management ({categories.length} categories)</h3>
+                                <div className="input-wrapper" style={{ width: '320px' }}>
+                                    <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                                    <input type="text" placeholder="Search code, name, description" value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} />
+                                </div>
+                            </div>
                             <button className="add-button" onClick={handleAddCategory}>
                                 <Plus size={20} /> Add Category
                             </button>
@@ -292,15 +436,22 @@ const AdminPage = () => {
                                         <th>Code</th>
                                         <th>Name</th>
                                         <th>Description</th>
+                                        <th>Public</th>
+                                        <th>Group</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {categories.map(cat => (
+                                    {categories.filter(cat => {
+                                        const q = categorySearch.toLowerCase();
+                                        return !q || (cat.code || '').toLowerCase().includes(q) || (cat.name || '').toLowerCase().includes(q) || (cat.description || '').toLowerCase().includes(q);
+                                    }).map(cat => (
                                         <tr key={cat.id}>
                                             <td><strong>{cat.code}</strong></td>
                                             <td>{cat.name}</td>
                                             <td>{cat.description || '-'}</td>
+                                            <td>{cat.isPublic ? 'Yes' : 'No'}</td>
+                                            <td>{groups.find(g => g.id === cat.GroupId)?.name || '-'}</td>
                                             <td>
                                                 <button className="icon-btn" onClick={() => handleEditCategory(cat)} title="Edit">
                                                     <Edit size={16} />
@@ -322,20 +473,10 @@ const AdminPage = () => {
                     <div className="dumps-management">
                         <h3>All Dumps ({dumps.length})</h3>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                            <input
-                                type="text"
-                                placeholder="Search dumps..."
-                                value={dumpSearch}
-                                onChange={(e) => setDumpSearch(e.target.value)}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid var(--border-color)',
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)'
-                                }}
-                            />
+                            <div className="input-wrapper" style={{ flex: 1 }}>
+                                <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                                <input type="text" placeholder="Search dumps" value={dumpSearch} onChange={(e) => setDumpSearch(e.target.value)} />
+                            </div>
                             <select
                                 value={dumpCategory}
                                 onChange={(e) => setDumpCategory(e.target.value)}
@@ -398,12 +539,139 @@ const AdminPage = () => {
                         </div>
                     </div>
                 )}
-            </div>
 
-            {/* Category Modal */}
-            {showCategoryModal && (
-                <div className="modal-overlay" onClick={() => setShowCategoryModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                {activeTab === 'groups' && (
+                    <div className="dumps-management">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3>All Groups ({groups.length})</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div className="input-wrapper" style={{ width: '320px' }}>
+                                    <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                                    <input type="text" placeholder="Search name or owner" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
+                                </div>
+                                <select value={groupStatus} onChange={(e) => setGroupStatus(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                                    <option>All</option>
+                                    <option>Active</option>
+                                    <option>Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="table-container">
+                            <table className="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Owner</th>
+                                        <th>Status</th>
+                                        <th>Manage</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {groups.filter(g => {
+                                        const q = groupSearch.toLowerCase();
+                                        const statusOk = groupStatus === 'All' || (groupStatus === 'Active' ? g.isActive : !g.isActive);
+                                        const textOk = !q || (g.name || '').toLowerCase().includes(q) || (g.User?.username || '').toLowerCase().includes(q);
+                                        return statusOk && textOk;
+                                    }).map(g => (
+                                        <tr key={g.id}>
+                                            <td>{g.name}</td>
+                                            <td>{g.User?.username || '-'}</td>
+                                            <td>
+                                                <span className={`status-badge ${g.isActive ? 'active' : 'inactive'}`}>{g.isActive ? 'Active' : 'Inactive'}</span>
+                                            </td>
+                                            <td>
+                                                <button className="icon-btn" onClick={() => openManageGroup(g)} title="Manage">
+                                                    <Edit size={16} />
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <button className="icon-btn delete" onClick={() => handleDeleteGroup(g.id)} title="Delete">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'questions' && (
+                    <div className="dumps-management">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3>All Questions ({questions.length})</h3>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <div className="input-wrapper" style={{ minWidth: '280px' }}>
+                                    <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                                    <input type="text" placeholder="Search question or dump" value={questionSearch} onChange={(e) => setQuestionSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadQuestions(); }} />
+                                </div>
+                                <select value={questionGroup} onChange={(e) => setQuestionGroup(e.target.value)} style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-primary)'
+                                }}>
+                                    <option value="">All Groups</option>
+                                    {groups.map(g => (
+                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                    ))}
+                                </select>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <input type="checkbox" checked={questionExact} onChange={(e) => setQuestionExact(e.target.checked)} />
+                                    Exact match
+                                </label>
+                                <button className="control-button" onClick={loadQuestions}>Filter</button>
+                                <button className="control-button secondary" onClick={async () => {
+                                    try {
+                                        const blob = await api.exportAdminQuestions(questionSearch, questionGroup, questionExact);
+                                        const url = window.URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = 'admin_questions.xlsx';
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        a.remove();
+                                        window.URL.revokeObjectURL(url);
+                                    } catch (err) {
+                                        alert(err.message);
+                                    }
+                                }}>Export</button>
+                            </div>
+                        </div>
+                        <div className="table-container">
+                            <table className="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Question</th>
+                                        <th>Dump</th>
+                                        <th>Owner</th>
+                                        <th>Groups</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {questions.map(q => (
+                                        <tr key={q.id}>
+                                            <td>{q.text}</td>
+                                            <td>{q.Dump?.name || '-'}</td>
+                                            <td>{q.Dump?.User?.username || '-'}</td>
+                                            <td>{(q.Dump?.Groups || []).map(g => g.name).join(', ') || '-'}</td>
+                                            
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+        </div>
+
+        {/* Category Modal */}
+        {showCategoryModal && (
+            <div className="modal-overlay" onClick={() => setShowCategoryModal(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                         <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
                         <div className="form-group">
                             <label>Code (e.g., CSA)</label>
@@ -432,6 +700,28 @@ const AdminPage = () => {
                                 rows={3}
                             />
                         </div>
+                        <div className="form-group">
+                            <label>Public</label>
+                            <select
+                                value={categoryForm.isPublic ? 'true' : 'false'}
+                                onChange={(e) => setCategoryForm({ ...categoryForm, isPublic: e.target.value === 'true' })}
+                            >
+                                <option value="true">Yes</option>
+                                <option value="false">No</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Group (optional)</label>
+                            <select
+                                value={categoryForm.groupId || ''}
+                                onChange={(e) => setCategoryForm({ ...categoryForm, groupId: e.target.value })}
+                            >
+                                <option value="">None</option>
+                                {groups.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
                             <button className="control-button secondary" onClick={() => setShowCategoryModal(false)}>
                                 Cancel
@@ -441,10 +731,108 @@ const AdminPage = () => {
                             </button>
                         </div>
                     </div>
+            </div>
+        )}
+
+        {/* Manage Group Modal */}
+        {showGroupModal && managingGroup && (
+            <div className="modal-overlay" onClick={() => setShowGroupModal(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Manage Group: {managingGroup.name}</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>Status:</span>
+                            <span className={`status-badge ${managingGroup.isActive ? 'active' : 'inactive'}`}>{managingGroup.isActive ? 'Active' : 'Inactive'}</span>
+                            <button className="control-button" onClick={async () => {
+                                try {
+                                    await api.updateGroupActive(managingGroup.id, !managingGroup.isActive);
+                                    setManagingGroup({ ...managingGroup, isActive: !managingGroup.isActive });
+                                    setGroups(prev => prev.map(x => x.id === managingGroup.id ? { ...x, isActive: !managingGroup.isActive } : x));
+                                } catch (err) {
+                                    alert(err.message);
+                                }
+                            }}>{managingGroup.isActive ? 'Set Inactive' : 'Set Active'}</button>
+                        </div>
+                    </div>
+                    <div className="table-container" style={{ marginTop: '1rem' }}>
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Member</th>
+                                    <th>Role</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupMembers.map(m => (
+                                    <tr key={m.id}>
+                                        <td>{m.User?.username}</td>
+                                        <td>
+                                            <select value={m.GroupRoleId || ''} onChange={(e) => handleMemberRoleUpdate(m.User.id, e.target.value)}>
+                                                {(m.GroupRole ? [m.GroupRole] : []).map(r => (
+                                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                                ))}
+                                                {/* Fallback: minimal options if role list not loaded */}
+                                                {!m.GroupRole && (
+                                                    <>
+                                                        <option value="">Member</option>
+                                                    </>
+                                                )}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <button className="icon-btn delete" onClick={() => handleRemoveMember(m.User.id)} title="Remove">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                        <button className="control-button secondary" onClick={() => setShowGroupModal(false)}>Close</button>
+                    </div>
                 </div>
-            )}
-        </div>
-    );
+            </div>
+        )}
+
+        {/* History Modal */}
+        {showHistoryModal && (
+            <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Quiz History for {historyDate}</h3>
+                    <div className="table-container" style={{ marginTop: '1rem' }}>
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Dump</th>
+                                    <th>Score</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {historyRows.map(row => (
+                                    <tr key={row.id}>
+                                        <td>{row.User?.username || '-'}</td>
+                                        <td>{row.Dump?.name || row.dumpName || '-'}</td>
+                                        <td>{Math.round((row.score / row.total) * 100)}%</td>
+                                        <td>{new Date(row.createdAt).toLocaleString()}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                        <button className="control-button secondary" onClick={() => setShowHistoryModal(false)}>Close</button>
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
+);
 };
 
 export default AdminPage;

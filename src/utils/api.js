@@ -1,4 +1,6 @@
-const API_URL = '/api';
+const isViteDev = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV);
+const isLocalHost = (typeof window !== 'undefined' && window.location && (/^(localhost|127\.0\.0\.1)$/).test(window.location.hostname));
+const API_URL = (isViteDev || isLocalHost) ? 'http://localhost:3000/api' : '/api';
 
 const getHeaders = () => {
     const token = localStorage.getItem('token');
@@ -17,6 +19,12 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    deleteQuestion: async (id) => {
+        const res = await fetch(`${API_URL}/admin/questions/${id}`, { method: 'DELETE', headers: getHeaders() });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         return data;
@@ -63,7 +71,7 @@ export const api = {
         return data;
     },
 
-    updateDump: async (id, name, questions, isPublic, timeLimit, showAnswerImmediately, category) => {
+  updateDump: async (id, name, questions, isPublic, timeLimit, showAnswerImmediately, category) => {
         const res = await fetch(`${API_URL}/dumps/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
@@ -72,7 +80,16 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         return data;
-    },
+  },
+
+  getDumpById: async (id) => {
+      const res = await fetch(`${API_URL}/dumps/${id}`, { headers: getHeaders() });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(text); }
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+  },
 
     deleteDump: async (id) => {
         const res = await fetch(`${API_URL}/dumps/${id}`, {
@@ -207,22 +224,21 @@ export const api = {
         return data;
     },
 
-    createCategory: async (code, name, description) => {
+    createCategory: async (code, name, description, isPublic = true, groupId = null) => {
         const res = await fetch(`${API_URL}/admin/categories`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ code, name, description })
+            body: JSON.stringify({ code, name, description, isPublic, groupId })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         return data;
     },
-
-    updateCategory: async (id, code, name, description) => {
+    updateCategory: async (id, code, name, description, isPublic, groupId) => {
         const res = await fetch(`${API_URL}/admin/categories/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
-            body: JSON.stringify({ code, name, description })
+            body: JSON.stringify({ code, name, description, isPublic, groupId })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -256,6 +272,222 @@ export const api = {
     // Admin - Statistics
     getAdminStats: async () => {
         const res = await fetch(`${API_URL}/admin/stats`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+
+    // Groups
+    getGroups: async () => {
+        const res = await fetch(`${API_URL}/groups`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    getGroupSummaries: async () => {
+        const res = await fetch(`${API_URL}/groups/summary`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    createGroup: async (name, description) => {
+        const res = await fetch(`${API_URL}/groups`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ name, description })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    updateGroup: async (groupId, name, description) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ name, description })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    inviteToGroup: async (groupId, inviteeUsername) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/invitations`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ inviteeUsername })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    acceptInvitation: async (token) => {
+        const res = await fetch(`${API_URL}/invitations/${token}/accept`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    shareDumpToGroups: async (dumpId, groupIds) => {
+        const res = await fetch(`${API_URL}/dumps/${dumpId}/share/groups`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ groupIds })
+        });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(text); }
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+    },
+
+    setDumpGroups: async (dumpId, groupIds) => {
+        const res = await fetch(`${API_URL}/dumps/${dumpId}/share/groups`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ groupIds })
+        });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(text); }
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+    },
+
+    getDumpGroups: async (dumpId) => {
+        const res = await fetch(`${API_URL}/dumps/${dumpId}/groups`, { headers: getHeaders() });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(text); }
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+    },
+
+    getGroupRoles: async (groupId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/roles`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    createGroupRole: async (groupId, payload) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/roles`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    updateGroupRole: async (groupId, roleId, payload) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/roles/${roleId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    deleteGroupRole: async (groupId, roleId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/roles/${roleId}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    getGroupMembers: async (groupId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/members`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    updateGroupMemberRole: async (groupId, userId, roleId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/members/${userId}/role`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ roleId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    removeGroupMember: async (groupId, userId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/members/${userId}`, { method: 'DELETE', headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+
+    // Admin - Groups
+    getAllGroups: async () => {
+        const res = await fetch(`${API_URL}/admin/groups`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    deleteGroup: async (id) => {
+        const res = await fetch(`${API_URL}/admin/groups/${id}`, { method: 'DELETE', headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    getGroupCategories: async (groupId) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/categories`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    createGroupCategory: async (groupId, code, name, description) => {
+        const res = await fetch(`${API_URL}/groups/${groupId}/categories`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ code, name, description })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    getAllQuestions: async (search = '', groupId = '', exact = false) => {
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (groupId) params.append('groupId', groupId);
+        if (exact) params.append('exact', '1');
+        const res = await fetch(`${API_URL}/admin/questions?${params.toString()}`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    exportAdminQuestions: async (search = '', groupId = '', exact = false) => {
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (groupId) params.append('groupId', groupId);
+        if (exact) params.append('exact', '1');
+        const res = await fetch(`${API_URL}/admin/questions/export?${params.toString()}`, { headers: getHeaders() });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Export failed');
+        }
+        const blob = await res.blob();
+        return blob;
+    },
+    updateGroupActive: async (id, isActive) => {
+        const res = await fetch(`${API_URL}/admin/groups/${id}/active`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ isActive })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    },
+    getAdminHistory: async (date = '') => {
+        const params = new URLSearchParams();
+        if (date) params.append('date', date);
+        const res = await fetch(`${API_URL}/admin/history?${params.toString()}`, { headers: getHeaders() });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         return data;

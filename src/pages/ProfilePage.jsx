@@ -18,12 +18,7 @@ const ProfilePage = () => {
     const [preview, setPreview] = useState(user?.avatar ? `${API_URL}${user.avatar}` : null);
     
     // Password fields
-    const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-    const [showNewPassword, setShowNewPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    
     
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
@@ -81,49 +76,7 @@ const ProfilePage = () => {
         }
     };
 
-    const handlePasswordSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setMessage({ type: '', text: '' });
-
-        // Validation
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            setMessage({ type: 'error', text: 'All password fields are required' });
-            setLoading(false);
-            return;
-        }
-
-        if (newPassword.length < 6) {
-            setMessage({ type: 'error', text: 'New password must be at least 6 characters long' });
-            setLoading(false);
-            return;
-        }
-
-        if (newPassword !== confirmPassword) {
-            setMessage({ type: 'error', text: 'New passwords do not match' });
-            setLoading(false);
-            return;
-        }
-
-        if (currentPassword === newPassword) {
-            setMessage({ type: 'error', text: 'New password must be different from current password' });
-            setLoading(false);
-            return;
-        }
-
-        try {
-            await api.changePassword(currentPassword, newPassword);
-            setMessage({ type: 'success', text: 'Password changed successfully!' });
-            // Clear password fields
-            setCurrentPassword('');
-            setNewPassword('');
-            setConfirmPassword('');
-        } catch (err) {
-            setMessage({ type: 'error', text: err.message });
-        } finally {
-            setLoading(false);
-        }
-    };
+    
 
     return (
         <div className="profile-container" style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
