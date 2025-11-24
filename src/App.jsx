@@ -14,7 +14,7 @@ import { BookOpen, LayoutDashboard, History, LogOut, Shield, Sun, Moon, User, Se
  
 import { api } from './utils/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
