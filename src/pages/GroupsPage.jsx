@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../utils/api';
 import { Users, Plus, Send, Shield, Search, Settings, User } from 'lucide-react';
+import { useI18n } from '../context/I18nContext';
 
 const GroupsPage = () => {
   const [groups, setGroups] = useState({ owned: [], member: [] });
@@ -12,12 +13,21 @@ const GroupsPage = () => {
   const [inviteUser, setInviteUser] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [showManageModal, setShowManageModal] = useState(false);
   const [message, setMessage] = useState('');
   const [roles, setRoles] = useState([]);
   const [members, setMembers] = useState([]);
   const [newRole, setNewRole] = useState({ name: '', canCreate: false, canRead: true, canUpdate: false, canDelete: false });
   const [activeTab, setActiveTab] = useState('overview');
   const [groupSearch, setGroupSearch] = useState('');
+  const { t } = useI18n();
+
+  useEffect(() => {
+    if (showManageModal && activeTab === 'overview' && selectedGroup) {
+      setName(selectedGroup.name || '');
+      setDescription(selectedGroup.description || '');
+    }
+  }, [showManageModal, activeTab, selectedGroup]);
 
   const load = async () => {
     try {
@@ -25,7 +35,7 @@ const GroupsPage = () => {
       setGroups(data);
       setMessage('');
     } catch (e) {
-      setMessage(e.message.includes('<') ? 'Failed to load groups. Is backend running on 3000?' : e.message);
+      setMessage(e.message.includes('<') ? t('groups.failedToLoadGroups') : e.message);
     }
     try {
       const summaries = await api.getGroupSummaries();
@@ -56,7 +66,7 @@ const GroupsPage = () => {
   }, [selectedGroup]);
 
   const handleCreate = async () => {
-    if (!name) { setMessage('Group name is required'); return; }
+    if (!name) { setMessage(t('groups.nameRequired')); return; }
     try {
       await api.createGroup(name, description);
       setName('');
@@ -70,7 +80,7 @@ const GroupsPage = () => {
 
   const handleEdit = async () => {
     if (!selectedGroup) return;
-    if (!name) { setMessage('Group name is required'); return; }
+    if (!name) { setMessage(t('groups.nameRequired')); return; }
     try {
       await api.updateGroup(selectedGroup.id, name, description);
       setShowEditModal(false);
@@ -88,9 +98,9 @@ const GroupsPage = () => {
       if (token) {
         const link = `${window.location.origin}/invite/${token}`;
         setInviteLink(link);
-        setMessage('Invite link generated');
+        setMessage(t('groups.inviteLinkGenerated'));
       } else {
-        setMessage(res.message || 'User added to group');
+        setMessage(res.message || t('groups.userAddedToGroup'));
       }
       setInviteUser('');
     } catch (e) {
@@ -157,10 +167,10 @@ const GroupsPage = () => {
   return (
     <div className="content-wrapper">
       <div className="section-header" style={{ marginTop: '1.5rem' }}>
-        <div className="section-title"><Users size={20}/> Groups</div>
+        <div className="section-title"><Users size={20}/> {t('groups.title')}</div>
         <div className="input-wrapper" style={{ width: '320px' }}>
           <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-          <input type="text" placeholder="Search groups" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
+          <input type="text" placeholder={t('groups.searchPlaceholder')} value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
         </div>
       </div>
 
@@ -169,8 +179,14 @@ const GroupsPage = () => {
       <div className="groups-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
         <aside className="dump-card" style={{ padding: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '1rem' }}>Your Groups</h3>
-            <button className="add-button" onClick={() => { setName(''); setDescription(''); setShowCreateModal(true); }}><Plus size={16}/> Create</button>
+            <h3 style={{ fontSize: '1rem' }}>{t('groups.yourGroups')}</h3>
+            <button
+              className="add-button"
+              onClick={() => { setName(''); setDescription(''); setShowCreateModal(true); }}
+              aria-label={t('groups.createGroup')}
+            >
+              <Plus size={16}/> {t('groups.new')}
+            </button>
           </div>
           <ul style={{ marginTop: '1rem' }}>
             {filteredOwned.map(g => (
@@ -178,32 +194,29 @@ const GroupsPage = () => {
                 <button className="btn-text" onClick={() => { setSelectedGroup(g); setActiveTab('overview'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Shield size={16}/> {g.name}
                 </button>
-                <button className="control-button secondary" onClick={() => { setSelectedGroup(g); setActiveTab('members'); }}>Manage</button>
+                <button className="control-button secondary" onClick={() => { setSelectedGroup(g); setActiveTab('members'); setShowManageModal(true); }}>{t('groups.manage')}</button>
               </li>
             ))}
             {filteredOwned.length === 0 && (
-              <li style={{ color: 'var(--text-secondary)' }}>No groups yet</li>
+              <li style={{ color: 'var(--text-secondary)' }}>{t('groups.noGroups')}</li>
             )}
           </ul>
-          <h3 style={{ fontSize: '1rem', marginTop: '1rem' }}>Member Of</h3>
+          <h3 style={{ fontSize: '1rem', marginTop: '1rem' }}>{t('groups.memberOf')}</h3>
           <ul style={{ marginTop: '0.5rem' }}>
             {filteredMember.map(g => (
               <li key={g.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}><User size={14}/> {g.name}</li>
             ))}
             {filteredMember.length === 0 && (
-              <li style={{ color: 'var(--text-secondary)' }}>No memberships</li>
+              <li style={{ color: 'var(--text-secondary)' }}>{t('groups.noMemberships')}</li>
             )}
           </ul>
-          <div className="dump-card" style={{ padding: '1rem', marginTop: '1rem' }}>
-            <h4 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Create Group</h4>
-            <button className="control-button primary" onClick={() => { setName(''); setDescription(''); setShowCreateModal(true); }}><Plus size={16}/> New</button>
-          </div>
+          {/* Removed duplicate create group section to avoid two CTAs */}
         </aside>
 
         <main className="dump-card" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <button className="tab-button active">All</button>
+              <button className="tab-button active">{t('groups.all')}</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
               <span>{startIndex + 1} to {endIndex} of {total}</span>
@@ -218,16 +231,16 @@ const GroupsPage = () => {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Owner</th>
-                  <th>Members</th>
-                  <th>Updated</th>
-                  <th>Type</th>
-                  <th>Actions</th>
+                  <th>{t('groups.table.name')}</th>
+                  <th>{t('groups.table.description')}</th>
+                  <th>{t('groups.table.owner')}</th>
+                  <th>{t('groups.table.members')}</th>
+                  <th>{t('groups.table.updated')}</th>
+                  <th>{t('groups.table.type')}</th>
+                  <th>{t('groups.table.actions')}</th>
                 </tr>
                 <tr className="filter-row">
-                  <th><input type="text" placeholder="Search" value={groupSearch} onChange={e => { setGroupSearch(e.target.value); setPage(1); }} /></th>
+                  <th><input type="text" placeholder={t('groups.table.search')} value={groupSearch} onChange={e => { setGroupSearch(e.target.value); setPage(1); }} /></th>
                   <th></th>
                   <th></th>
                   <th></th>
@@ -248,164 +261,181 @@ const GroupsPage = () => {
                     <td>{new Date(g.updatedAt).toLocaleString()}</td>
                     <td>{g.type}</td>
                     <td>
-                      <button className="control-button secondary" onClick={() => { setSelectedGroup({ id: g.id, name: g.name }); setActiveTab('members'); }}>Manage</button>
+                      <button className="control-button secondary" onClick={() => { setSelectedGroup({ id: g.id, name: g.name }); setActiveTab('members'); setShowManageModal(true); }}>{t('groups.manage')}</button>
                     </td>
                   </tr>
                 ))}
                 {pageRows.length === 0 && (
-                  <tr><td colSpan={7} style={{ color: 'var(--text-secondary)' }}>No groups found</td></tr>
+                  <tr><td colSpan={7} style={{ color: 'var(--text-secondary)' }}>{t('groups.table.noGroupsFound')}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
-          {!selectedGroup ? (
-            <div style={{ color: 'var(--text-secondary)' }}>Select a group to manage its members and roles.</div>
-          ) : (
-            <>
-              <div className="section-header" style={{ marginBottom: '1rem' }}>
-                <div className="section-title" style={{ fontSize: '1.25rem' }}><Shield size={18}/> {selectedGroup.name}</div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
-                  <button className={`tab-button ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>Members</button>
-                  <button className={`tab-button ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>Roles</button>
-                  <button className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>Settings</button>
-                </div>
-              </div>
-
-              {activeTab === 'overview' && (
-                <div style={{ color: 'var(--text-secondary)' }}>
-                  Manage your group. Use tabs to invite members and configure permissions.
-                </div>
-              )}
-
-              {activeTab === 'members' && (
-                <div>
-                  <div className="form-group">
-                    <label>Invite</label>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <div className="input-wrapper" style={{ flex: 1 }}>
-                        <User size={18} style={{ color: 'var(--text-secondary)' }} />
-                        <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} placeholder="optional username" />
-                      </div>
-                      <button className="control-button primary" onClick={handleInvite}><Send size={16}/> Generate Link</button>
-                    </div>
-                    {inviteLink && (
-                      <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <input type="text" readOnly value={inviteLink} style={{ flex: 1 }} />
-                        <button className="control-button secondary" onClick={() => { navigator.clipboard.writeText(inviteLink); }}>Copy</button>
-                      </div>
-                    )}
-                  </div>
-
-                  <h3 style={{ marginTop: '1rem' }}>Members</h3>
-                  <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '0.5rem', paddingTop: '0.5rem' }}>
-                    {members.map(m => (
-                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><User size={16}/> {m.User.username}</span>
-                        <select value={m.GroupRole?.id || m.GroupRoleId || ''} onChange={(e) => handleMemberRoleChange(m.User.id, e.target.value)}>
-                          <option value="">No Role</option>
-                          {roles.map(r => (
-                            <option key={r.id} value={r.id}>{r.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                    {members.length === 0 && (
-                      <div style={{ color: 'var(--text-secondary)' }}>No members yet</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'roles' && (
-                <div>
-                  <div className="dump-card" style={{ padding: '1rem' }}>
-                    <h4 style={{ marginBottom: '0.5rem' }}>Add Role</h4>
-                    <div className="form-group">
-                      <label>Name</label>
-                      <input type="text" value={newRole.name} onChange={e => setNewRole({ ...newRole, name: e.target.value })} />
-                    </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-                      <label><input type="checkbox" checked={newRole.canCreate} onChange={e => setNewRole({ ...newRole, canCreate: e.target.checked })} /> Create</label>
-                      <label><input type="checkbox" checked={newRole.canRead} onChange={e => setNewRole({ ...newRole, canRead: e.target.checked })} /> Read</label>
-                      <label><input type="checkbox" checked={newRole.canUpdate} onChange={e => setNewRole({ ...newRole, canUpdate: e.target.checked })} /> Update</label>
-                      <label><input type="checkbox" checked={newRole.canDelete} onChange={e => setNewRole({ ...newRole, canDelete: e.target.checked })} /> Delete</label>
-                    </div>
-                    <button className="control-button primary" onClick={handleCreateRole}><Plus size={16}/> Add Role</button>
-                  </div>
-                  <ul style={{ marginTop: '1rem' }}>
-                    {roles.map(r => (
-                      <li key={r.id} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <input type="text" value={r.name} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, name: e.target.value } : x))} />
-                          <button className="icon-btn delete" onClick={() => handleDeleteRole(r.id)}>Delete</button>
-                        </div>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                          <label><input type="checkbox" checked={!!r.canCreate} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canCreate: e.target.checked } : x))} /> Create</label>
-                          <label><input type="checkbox" checked={!!r.canRead} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canRead: e.target.checked } : x))} /> Read</label>
-                          <label><input type="checkbox" checked={!!r.canUpdate} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canUpdate: e.target.checked } : x))} /> Update</label>
-                          <label><input type="checkbox" checked={!!r.canDelete} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canDelete: e.target.checked } : x))} /> Delete</label>
-                          <button className="control-button secondary" onClick={() => handleUpdateRole(r)}>Save</button>
-                        </div>
-                      </li>
-                    ))}
-                    {roles.length === 0 && (
-                      <li style={{ color: 'var(--text-secondary)' }}>No roles yet</li>
-                    )}
-                  </ul>
-                </div>
-              )}
-
-              {activeTab === 'settings' && (
-                <div>
-                  <button className="control-button secondary" onClick={() => { setName(selectedGroup.name || ''); setDescription(''); setShowEditModal(true); }}><Settings size={16}/> Edit Group</button>
-                </div>
-              )}
-            </>
+          {!selectedGroup && (
+            <div style={{ color: 'var(--text-secondary)' }}>{t('groups.selectHint')}</div>
           )}
         </main>
       </div>
-      {showCreateModal && (
+  {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Create Group</h3>
+            <h3>{t('groups.modal.create.title')}</h3>
             {message && (
               <div className="error-message" style={{ marginBottom: '0.5rem' }}>{message}</div>
             )}
             <div className="form-group">
-              <label>Name</label>
+              <label>{t('common.name')}</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Description</label>
+              <label>{t('common.description')}</label>
               <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button className="control-button secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="control-button primary" onClick={handleCreate}>Create</button>
+              <button className="control-button secondary" onClick={() => setShowCreateModal(false)}>{t('admin.common.cancel')}</button>
+              <button className="control-button primary" onClick={handleCreate}>{t('common.create')}</button>
             </div>
           </div>
         </div>
       )}
 
-      {showEditModal && (
+  {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Edit Group</h3>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>{t('groups.modal.edit.title')}</h3>
             {message && (
               <div className="error-message" style={{ marginBottom: '0.5rem' }}>{message}</div>
             )}
             <div className="form-group">
-              <label>Name</label>
+              <label>{t('common.name')}</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Description</label>
+              <label>{t('common.description')}</label>
               <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <button className="control-button secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
-              <button className="control-button primary" onClick={handleEdit}>Save</button>
+              <button className="control-button secondary" onClick={() => setShowEditModal(false)}>{t('admin.common.cancel')}</button>
+              <button className="control-button primary" onClick={handleEdit}>{t('admin.common.update')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManageModal && selectedGroup && (
+        <div className="modal-overlay manage-modal" onClick={() => setShowManageModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="section-header" style={{ marginBottom: '1rem' }}>
+              <div className="section-title" style={{ fontSize: '1.25rem' }}><Shield size={18}/> {selectedGroup.name}</div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>{t('groups.tabs.overview')}</button>
+                <button className={`tab-button ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>{t('groups.tabs.members')}</button>
+                <button className={`tab-button ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>{t('groups.tabs.roles')}</button>
+                <button className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>{t('groups.tabs.settings')}</button>
+              </div>
+            </div>
+            <div className="manage-modal-body">
+            {activeTab === 'overview' && (
+              <div>
+                <div style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>{t('groups.overviewHelp')}</div>
+                <div className="dump-card" style={{ padding: '1rem' }}>
+                  <div className="form-group">
+                    <label>{t('common.name')}</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>{t('common.description')}</label>
+                    <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button className="control-button secondary" onClick={() => { setName(selectedGroup.name || ''); setDescription(selectedGroup.description || ''); }}>{t('admin.common.cancel')}</button>
+                    <button className="control-button primary" onClick={handleEdit}>{t('admin.common.update')}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'members' && (
+              <div>
+                <div className="form-group">
+                  <label>{t('groups.invite')}</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className="input-wrapper" style={{ flex: 1 }}>
+                      <User size={18} style={{ color: 'var(--text-secondary)' }} />
+                      <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} placeholder={t('groups.optionalUsername')} />
+                    </div>
+                    <button className="control-button primary" onClick={handleInvite}><Send size={16}/> {t('groups.generateLink')}</button>
+                  </div>
+                  {inviteLink && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input type="text" readOnly value={inviteLink} style={{ flex: 1 }} />
+                      <button className="control-button secondary" onClick={() => { navigator.clipboard.writeText(inviteLink); }}>{t('groups.copy')}</button>
+                    </div>
+                  )}
+                </div>
+
+                <h3 style={{ marginTop: '1rem' }}>{t('groups.tabs.members')}</h3>
+                <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '0.5rem', paddingTop: '0.5rem' }}>
+                  {members.map(m => (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><User size={16}/> {m.User.username}</span>
+                       <select value={m.GroupRole?.id || m.GroupRoleId || ''} onChange={(e) => handleMemberRoleChange(m.User.id, e.target.value)}>
+                         <option value="">{t('groups.role.noRole')}</option>
+                         {roles.map(r => (
+                           <option key={r.id} value={r.id}>{r.name}</option>
+                         ))}
+                       </select>
+                    </div>
+                  ))}
+                  {members.length === 0 && (
+                    <div style={{ color: 'var(--text-secondary)' }}>{t('groups.noMembersYet')}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'roles' && (
+              <div>
+                <div className="dump-card" style={{ padding: '1rem' }}>
+                  <h4 style={{ marginBottom: '0.5rem' }}>{t('groups.addRole')}</h4>
+                  <div className="form-group">
+                    <label>{t('groups.role.name')}</label>
+                    <input type="text" value={newRole.name} onChange={e => setNewRole({ ...newRole, name: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <label><input type="checkbox" checked={newRole.canCreate} onChange={e => setNewRole({ ...newRole, canCreate: e.target.checked })} /> {t('groups.role.create')}</label>
+                    <label><input type="checkbox" checked={newRole.canRead} onChange={e => setNewRole({ ...newRole, canRead: e.target.checked })} /> {t('groups.role.read')}</label>
+                    <label><input type="checkbox" checked={newRole.canUpdate} onChange={e => setNewRole({ ...newRole, canUpdate: e.target.checked })} /> {t('groups.role.update')}</label>
+                    <label><input type="checkbox" checked={newRole.canDelete} onChange={e => setNewRole({ ...newRole, canDelete: e.target.checked })} /> {t('groups.role.delete')}</label>
+                  </div>
+                  <button className="control-button primary" onClick={handleCreateRole}><Plus size={16}/> {t('groups.addRole')}</button>
+                </div>
+                <ul style={{ marginTop: '1rem' }}>
+                  {roles.map(r => (
+                    <li key={r.id} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <input type="text" value={r.name} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, name: e.target.value } : x))} />
+                        <button className="icon-btn delete" onClick={() => handleDeleteRole(r.id)}>{t('groups.role.delete')}</button>
+                      </div>
+                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                        <label><input type="checkbox" checked={!!r.canCreate} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canCreate: e.target.checked } : x))} /> {t('groups.role.create')}</label>
+                        <label><input type="checkbox" checked={!!r.canRead} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canRead: e.target.checked } : x))} /> {t('groups.role.read')}</label>
+                        <label><input type="checkbox" checked={!!r.canUpdate} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canUpdate: e.target.checked } : x))} /> {t('groups.role.update')}</label>
+                        <label><input type="checkbox" checked={!!r.canDelete} onChange={e => setRoles(prev => prev.map(x => x.id === r.id ? { ...x, canDelete: e.target.checked } : x))} /> {t('groups.role.delete')}</label>
+                        <button className="control-button secondary" onClick={() => handleUpdateRole(r)}>{t('groups.role.save')}</button>
+                      </div>
+                    </li>
+                  ))}
+                  {roles.length === 0 && (
+                    <li style={{ color: 'var(--text-secondary)' }}>{t('groups.role.noRolesYet')}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div style={{ color: 'var(--text-secondary)' }}>{t('groups.settings.placeholder') || ''}</div>
+            )}
             </div>
           </div>
         </div>

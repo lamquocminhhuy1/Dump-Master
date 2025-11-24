@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { I18nProvider, useI18n } from './context/I18nContext';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
 import HistoryPage from './pages/HistoryPage';
@@ -83,6 +84,7 @@ const ResultsWrapper = () => {
 const SharedDumpWrapper = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [dump, setDump] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -96,11 +98,11 @@ const SharedDumpWrapper = () => {
         const response = await fetch(`/api/dumps/shared/${id}`);
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Dump not found or not shared');
+            setError(t('errors.shared.dumpNotFoundOrNotShared'));
           } else if (response.status === 403) {
-            setError('This dump is private and cannot be shared');
+            setError(t('errors.shared.private'));
           } else {
-            setError('Failed to load shared dump');
+            setError(t('errors.shared.failedToLoad'));
           }
           setLoading(false);
           return;
@@ -110,11 +112,11 @@ const SharedDumpWrapper = () => {
         if (dumpData.isPublic) {
           setDump(dumpData);
         } else {
-          setError('This dump is private and cannot be shared');
+          setError(t('errors.shared.private'));
         }
       } catch (err) {
         console.error('Failed to load shared dump:', err);
-        setError(err.message || 'Failed to load shared dump');
+        setError(err.message || t('errors.shared.failedToLoad'));
       } finally {
         setLoading(false);
       }
@@ -123,7 +125,7 @@ const SharedDumpWrapper = () => {
     if (id) {
       loadSharedDump();
     } else {
-      setError('Invalid dump ID');
+      setError(t('errors.invalidDumpId'));
       setLoading(false);
     }
   }, [id]);
@@ -140,7 +142,7 @@ const SharedDumpWrapper = () => {
           gap: '1rem'
         }}>
           <div className="loading-spinner">Loading...</div>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading shared quiz...</p>
+          <p style={{ color: 'var(--text-secondary)' }}>{t('errors.loadingSharedQuiz')}</p>
         </div>
       </div>
     );
@@ -163,16 +165,16 @@ const SharedDumpWrapper = () => {
             borderRadius: '8px',
             marginBottom: '1rem'
           }}>
-            <strong>Error:</strong> {error || 'Dump not found'}
+            <strong>{t('common.errorLabel')}</strong> {error || t('errors.dumpNotFound')}
           </div>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-            This quiz may be private, deleted, or the link is invalid.
+            {t('errors.linkInvalidOrDeleted')}
           </p>
           <button 
             onClick={() => navigate('/')} 
             className="control-button primary"
           >
-            Go to Dashboard
+            {t('actions.goDashboard')}
           </button>
         </div>
       </div>
@@ -196,13 +198,13 @@ const SharedDumpWrapper = () => {
             borderRadius: '8px',
             marginBottom: '1rem'
           }}>
-            <strong>Error:</strong> This dump has no questions
+            <strong>{t('common.errorLabel')}</strong> {t('errors.dumpHasNoQuestions')}
           </div>
           <button 
             onClick={() => navigate('/')} 
             className="control-button primary"
           >
-            Go to Dashboard
+            {t('actions.goDashboard')}
           </button>
         </div>
       </div>
@@ -232,6 +234,7 @@ const ReviewWrapper = () => {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [dump, setDump] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -242,25 +245,15 @@ const ReviewWrapper = () => {
       setLoading(true);
       setError('');
       try {
-        // Fetch all dumps and find the one matching the ID
-        // Note: IDs are UUIDs, so we need string comparison, not parseInt
-        const dumps = await api.getDumps('my');
-        const found = dumps.find(d => String(d.id) === String(id));
+        const found = await api.getDumpById(id);
         if (found) {
           setDump(found);
         } else {
-          // Try public dumps
-          const publicDumps = await api.getDumps('public');
-          const foundPublic = publicDumps.find(d => String(d.id) === String(id));
-          if (foundPublic) {
-            setDump(foundPublic);
-          } else {
-            setError('Dump not found');
-          }
+          setError(t('errors.dumpNotFound'));
         }
       } catch (err) {
         console.error('Failed to load dump:', err);
-        setError(err.message || 'Failed to load dump');
+        setError(err.message || t('errors.failedToLoadDump'));
       } finally {
         setLoading(false);
       }
@@ -269,7 +262,7 @@ const ReviewWrapper = () => {
     if (id) {
       loadDump();
     } else {
-      setError('Invalid dump ID');
+      setError(t('errors.invalidDumpId'));
       setLoading(false);
     }
   }, [id]);
@@ -286,7 +279,7 @@ const ReviewWrapper = () => {
           gap: '1rem'
         }}>
           <div className="loading-spinner">Loading...</div>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading quiz for review...</p>
+          <p style={{ color: 'var(--text-secondary)' }}>{t('errors.loadingReview')}</p>
         </div>
       </div>
     );
@@ -309,16 +302,16 @@ const ReviewWrapper = () => {
             borderRadius: '8px',
             marginBottom: '1rem'
           }}>
-            <strong>Error:</strong> {error || 'Dump not found'}
+            <strong>{t('common.errorLabel')}</strong> {error || t('errors.dumpNotFound')}
           </div>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-            The quiz you're trying to review may have been deleted or you don't have access to it.
+            {t('errors.reviewDescription')}
           </p>
           <button 
             onClick={() => navigate('/history')} 
             className="control-button primary"
           >
-            Go Back to History
+            {t('actions.goBackHistory')}
           </button>
         </div>
       </div>
@@ -343,13 +336,13 @@ const ReviewWrapper = () => {
             borderRadius: '8px',
             marginBottom: '1rem'
           }}>
-            <strong>Error:</strong> This dump has no questions
+            <strong>{t('common.errorLabel')}</strong> {t('errors.dumpHasNoQuestions')}
           </div>
           <button 
             onClick={() => navigate('/history')} 
             className="control-button primary"
           >
-            Go Back to History
+            {t('actions.goBackHistory')}
           </button>
         </div>
       </div>
@@ -373,6 +366,7 @@ const Navigation = () => {
   const { theme, toggleTheme } = useTheme();
   const [showDropdown, setShowDropdown] = useState(false);
   const menuRef = useRef(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     const handleOutside = (e) => {
@@ -401,27 +395,29 @@ const Navigation = () => {
     <nav className="main-nav">
       <div className="nav-logo">
         <BookOpen size={24} />
-        <span>Dumps Master</span>
+        <span>{t('brand.name')}</span>
       </div>
       <div className="nav-links">
         <Link to="/" className="nav-link">
-          Dashboard
+          {t('nav.dashboard')}
         </Link>
         <Link to="/history" className="nav-link">
-          History
+          {t('nav.history')}
         </Link>
         <Link to="/groups" className="nav-link">
-          Groups
+          {t('nav.groups')}
         </Link>
         {user.role === 'admin' && (
           <Link to="/admin" className="nav-link">
-            Admin
+            {t('nav.admin')}
           </Link>
         )}
 
-        <button onClick={toggleTheme} className="nav-link icon-only" title="Toggle Theme">
+        <button onClick={toggleTheme} className="nav-link icon-only" title={t('nav.toggleTheme')}>
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
+
+        <LangToggle />
 
         <div className="user-menu" ref={menuRef} style={{ position: 'relative' }}>
           <button
@@ -460,10 +456,10 @@ const Navigation = () => {
                 {user.username}
               </div>
               <Link to="/profile" className="dropdown-item" onClick={() => setShowDropdown(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', color: 'var(--text-secondary)', textDecoration: 'none', borderRadius: '4px', fontSize: '0.9rem' }}>
-                <Settings size={16} /> Profile
+                <Settings size={16} /> {t('nav.profile')}
               </Link>
               <button onClick={logout} className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', color: '#ef4444', background: 'none', border: 'none', width: '100%', cursor: 'pointer', borderRadius: '4px', textAlign: 'left', fontSize: '0.9rem' }}>
-                <LogOut size={16} /> Logout
+                <LogOut size={16} /> {t('nav.logout')}
               </button>
             </div>
           )}
@@ -474,6 +470,7 @@ const Navigation = () => {
 };
 
 function AppContent() {
+  const { t } = useI18n();
   return (
     <div className="app-container">
       <Navigation />
@@ -536,7 +533,7 @@ function AppContent() {
         </Routes>
       </main>
       <footer className="app-footer">
-        <p>&copy; {new Date().getFullYear()} Dumps Master. Built for learning.</p>
+        <p>&copy; {new Date().getFullYear()} {t('brand.name')}. {t('footer.built')}</p>
       </footer>
     </div>
   );
@@ -546,31 +543,47 @@ function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Router>
-          <AppContent />
-        </Router>
+        <I18nProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </I18nProvider>
       </ThemeProvider>
     </AuthProvider>
   );
 }
 
 export default App;
+const LangToggle = () => {
+  const { lang, setLang } = useI18n();
+  return (
+    <button
+      className="nav-link icon-only"
+      onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')}
+      title={lang === 'vi' ? 'Tiếng Việt' : 'English'}
+      style={{ fontWeight: 700 }}
+    >
+      {lang === 'vi' ? 'VI' : 'EN'}
+    </button>
+  );
+};
 // Invitation Accept Wrapper - join group via token
 const InvitationAcceptWrapper = () => {
   const { token } = useParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState('pending');
   const [message, setMessage] = useState('');
+  const { t } = useI18n();
 
   useEffect(() => {
     const accept = async () => {
       try {
         await api.acceptInvitation(token);
         setStatus('success');
-        setMessage('Joined group');
+        setMessage(t('invitation.joinedGroup'));
       } catch (err) {
         setStatus('error');
-        setMessage(err.message || 'Failed to accept invitation');
+        setMessage(err.message || t('invitation.failedAccept'));
       }
     };
     if (token) accept();
@@ -582,7 +595,7 @@ const InvitationAcceptWrapper = () => {
         {status === 'pending' && (
           <>
             <div className="loading-spinner">Loading...</div>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>Accepting invitation...</p>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>{t('invitation.accepting')}</p>
           </>
         )}
         {status === 'success' && (
@@ -590,7 +603,7 @@ const InvitationAcceptWrapper = () => {
             <div className="success-message" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid #22c55e', color: '#22c55e', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
               {message}
             </div>
-            <button className="control-button primary" onClick={() => navigate('/groups')}>Go to Groups</button>
+            <button className="control-button primary" onClick={() => navigate('/groups')}>{t('actions.goGroups')}</button>
           </>
         )}
         {status === 'error' && (
@@ -598,7 +611,7 @@ const InvitationAcceptWrapper = () => {
             <div className="error-message" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
               {message}
             </div>
-            <button className="control-button primary" onClick={() => navigate('/')}>Go to Dashboard</button>
+            <button className="control-button primary" onClick={() => navigate('/')}>{t('actions.goDashboard')}</button>
           </>
         )}
       </div>

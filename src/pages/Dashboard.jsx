@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import FileUpload from '../components/FileUpload';
 import { parseExcelFile } from '../utils/excelParser';
 import { Play, Trash2, Clock, Plus, Edit, Search, Loader2 } from 'lucide-react';
+import { useI18n } from '../context/I18nContext';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -40,7 +41,7 @@ const Dashboard = () => {
             setError(null);
         } catch (err) {
             console.error("Failed to load dumps", err);
-            setError("Failed to load dumps: " + err.message);
+            setError(t('errors.failedToLoadDumps'));
         } finally {
             setLoading(false);
         }
@@ -77,14 +78,15 @@ const Dashboard = () => {
 
     const [showTour, setShowTour] = useState(false);
 
+    const { t } = useI18n();
     return (
         <div className="dashboard-container">
             <div className="hero-section">
                 <div className="hero-content">
-                    <div className="hero-badge">Exam Practice Platform</div>
-                    <h1 className="hero-title" style={{ marginBottom: '1rem' }}>Your Exam Practice Hub</h1>
+                    <div className="hero-badge">{t('hero.badge')}</div>
+                    <h1 className="hero-title" style={{ marginBottom: '1rem' }}>{t('hero.title')}</h1>
                     <p className="hero-subtitle">
-                        Practice with exam dumps, upload your own questions, and explore the public library. Master your certification exams with interactive quizzes.
+                        {t('hero.subtitle')}
                     </p>
                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                         <button
@@ -93,7 +95,7 @@ const Dashboard = () => {
                             onClick={() => setShowTour(true)}
                             aria-label="Start guided tour"
                         >
-                            Start Tour
+                            {t('tour.howto')}
                         </button>
                         <button
                             className="add-button"
@@ -104,7 +106,7 @@ const Dashboard = () => {
                             }}
                             aria-label="Add new dump"
                         >
-                            <Plus size={18} /> Quick Upload
+                            <Plus size={18} /> {t('modal.quickUpload.title')}
                         </button>
                     </div>
                 </div>
@@ -114,10 +116,10 @@ const Dashboard = () => {
             {showTour && (
                 <div className="modal-overlay" onClick={() => setShowTour(false)}>
                     <div className="modal-content tour-modal" onClick={(e) => e.stopPropagation()}>
-                        <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Welcome to Dumps Master! 🎓</h2>
+                        <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>{t('tour.title')}</h2>
 
                         <div style={{ marginBottom: '2rem' }}>
-                            <h3 style={{ color: 'var(--primary-color)', marginBottom: '1rem' }}>How to Use This App:</h3>
+                            <h3 style={{ color: 'var(--primary-color)', marginBottom: '1rem' }}>{t('tour.howto')}</h3>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
@@ -133,9 +135,9 @@ const Dashboard = () => {
                                         fontWeight: 'bold'
                                     }}>1</div>
                                     <div>
-                                        <strong>Download Sample File</strong>
+                                        <strong>{t('tour.step1.title')}</strong>
                                         <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
-                                            Download our sample dumps file to see the correct format.
+                                            {t('tour.step1.desc')}
                                         </p>
                                         <a
                                             href="/sample_dumps.xlsx"
@@ -143,7 +145,7 @@ const Dashboard = () => {
                                             className="control-button primary"
                                             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.9rem' }}
                                         >
-                                            📥 Download Sample File
+                                            {t('tour.step1.cta')}
                                         </a>
                                     </div>
                                 </div>
@@ -161,14 +163,14 @@ const Dashboard = () => {
                                         fontWeight: 'bold'
                                     }}>2</div>
                                     <div>
-                                        <strong>Edit Your Dumps</strong>
+                                        <strong>{t('tour.step2.title')}</strong>
                                         <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
-                                            Open the CSV file in Excel or Google Sheets. Add your own questions following the same format:
+                                            {t('tour.step2.desc')}
                                         </p>
                                         <ul style={{ color: 'var(--text-secondary)', marginLeft: '1.5rem' }}>
-                                            <li>Column A: Question text</li>
-                                            <li>Columns B-E: Answer options (A, B, C, D)</li>
-                                            <li>Column F: Correct answer (A, B, C, or D)</li>
+                                            <li>{t('tour.step2.listA')}</li>
+                                            <li>{t('tour.step2.listB')}</li>
+                                            <li>{t('tour.step2.listC')}</li>
                                         </ul>
                                     </div>
                                 </div>
@@ -186,9 +188,9 @@ const Dashboard = () => {
                                         fontWeight: 'bold'
                                     }}>3</div>
                                     <div>
-                                        <strong>Upload Your Dump</strong>
+                                        <strong>{t('tour.step3.title')}</strong>
                                         <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
-                                            Click the "Add New" button below and upload your edited CSV file. You can set it as public or private.
+                                            {t('tour.step3.desc')}
                                         </p>
                                     </div>
                                 </div>
@@ -206,9 +208,9 @@ const Dashboard = () => {
                                         fontWeight: 'bold'
                                     }}>4</div>
                                     <div>
-                                        <strong>Start Practicing!</strong>
+                                        <strong>{t('tour.step4.title')}</strong>
                                         <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
-                                            Click "View" on any dump to start taking the quiz. You can also explore the Public Library to practice with dumps shared by others.
+                                            {t('tour.step4.desc')}
                                         </p>
                                     </div>
                                 </div>
@@ -220,7 +222,7 @@ const Dashboard = () => {
                             onClick={() => setShowTour(false)}
                             style={{ width: '100%' }}
                         >
-                            Got it, Let's Start!
+                            {t('tour.close')}
                         </button>
                     </div>
                 </div>
@@ -231,7 +233,7 @@ const Dashboard = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                         <div className="section-title">
                             <div className="section-number">{dumps.length}</div>
-                            <span>Available Exam Dumps</span>
+                            <span>{t('section.available')}</span>
                         </div>
 
                         <div className="admin-tabs">
@@ -239,19 +241,19 @@ const Dashboard = () => {
                                 className={`tab-button ${activeTab === 'my' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('my')}
                             >
-                                My Dumps
+                                {t('tabs.my')}
                             </button>
                             <button
                                 className={`tab-button ${activeTab === 'group' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('group')}
                             >
-                                Group
+                                {t('tabs.group')}
                             </button>
                             <button
                                 className={`tab-button ${activeTab === 'public' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('public')}
                             >
-                                Public
+                                {t('tabs.public')}
                             </button>
                         </div>
                     </div>
@@ -276,7 +278,7 @@ const Dashboard = () => {
                             }} />
                             <input
                                 type="text"
-                                placeholder="Search dumps by name..."
+                                placeholder={t('search.placeholder')}
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
                                 aria-label="Search dumps"
@@ -313,8 +315,8 @@ const Dashboard = () => {
                             onFocus={(e) => e.target.style.borderColor = 'var(--primary-color)'}
                             onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
                         >
-                            <option value="All">All Categories</option>
-                            <option value="Uncategorized">Uncategorized</option>
+                            <option value="All">{t('filter.all')}</option>
+                            <option value="Uncategorized">{t('filter.uncategorized')}</option>
                             <option value="CSA">CSA - Certified System Administrator</option>
                             <option value="CIS">CIS - Certified Implementation Specialist</option>
                             <option value="CAD">CAD - Certified Application Developer</option>
@@ -332,7 +334,7 @@ const Dashboard = () => {
                             aria-label="Add new dump"
                             style={{ flexShrink: 0 }}
                         >
-                            <Plus size={20} /> Add New
+                            <Plus size={20} /> {t('button.addNew')}
                         </button>
                     </div>
                 </div>
@@ -350,7 +352,7 @@ const Dashboard = () => {
                         justifyContent: 'space-between',
                         alignItems: 'center'
                     }}>
-                        <span><strong>Error:</strong> {error}</span>
+                        <span><strong>{t('common.errorLabel')}</strong> {error}</span>
                         <button 
                             onClick={() => setError(null)} 
                             className="icon-btn"
@@ -385,7 +387,7 @@ const Dashboard = () => {
                         gap: '1rem'
                     }}>
                         <Loader2 size={32} className="loading-spinner" style={{ animation: 'spin 1s linear infinite' }} />
-                        <p style={{ color: 'var(--text-secondary)' }}>Loading dumps...</p>
+                        <p style={{ color: 'var(--text-secondary)' }}>{t('dashboard.loading')}</p>
                     </div>
                 )}
 
@@ -405,7 +407,7 @@ const Dashboard = () => {
                                 <h3 className="card-title">{dump.name}</h3>
                                 <div className="card-meta">
                                     <Clock size={16} />
-                                    <span>{dump.timeLimit > 0 ? `${dump.timeLimit}m` : 'Self-paced'}</span>
+                                    <span>{dump.timeLimit > 0 ? `${dump.timeLimit}m` : t('card.selfPaced')}</span>
                                 </div>
 
                                 <div className="card-footer">
@@ -413,7 +415,7 @@ const Dashboard = () => {
                                         className="btn-text"
                                         onClick={() => navigate('/quiz', { state: { dump } })}
                                     >
-                                        View <Play size={14} />
+                                        {t('card.view')} <Play size={14} />
                                     </button>
 
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -425,14 +427,14 @@ const Dashboard = () => {
                                                 <button
                                                     className="icon-btn"
                                                     onClick={() => navigate(`/dump/${dump.id}/edit`, { state: { dump } })}
-                                                    title="Edit"
+                                                    title={t('tooltip.edit')}
                                                 >
                                                     <Edit size={16} />
                                                 </button>
                                                 <button
                                                     className="icon-btn delete"
                                                     onClick={() => handleDelete(dump.id)}
-                                                    title="Delete"
+                                                    title={t('tooltip.delete')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -471,7 +473,7 @@ const Dashboard = () => {
                                 marginBottom: '0.5rem',
                                 color: 'var(--text-primary)'
                             }}>
-                                No dumps found
+                                {t('dashboard.empty')}
                             </h3>
                             <p style={{ 
                                 color: 'var(--text-secondary)', 
@@ -480,10 +482,10 @@ const Dashboard = () => {
                                 margin: '0 auto 1.5rem'
                             }}>
                                 {searchInput || category !== 'All' 
-                                    ? 'Try adjusting your search or filters to find what you\'re looking for.'
+                                    ? t('empty.hint.search')
                                     : activeTab === 'my'
-                                    ? 'Get started by uploading your first exam dump using the "Add New" button above.'
-                                    : 'No public dumps available yet. Check back later or create your own!'}
+                                    ? t('empty.hint.my')
+                                    : t('empty.hint.public')}
                             </p>
                             {(!searchInput && category === 'All' && activeTab === 'my') && (
                                 <button 
@@ -491,7 +493,7 @@ const Dashboard = () => {
                                     onClick={() => setShowUpload(true)}
                                     style={{ marginTop: '1rem' }}
                                 >
-                                    <Plus size={20} /> Create Your First Dump
+                                    <Plus size={20} /> {t('empty.createFirst')}
                                 </button>
                             )}
                         </div>

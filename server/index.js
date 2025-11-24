@@ -306,12 +306,14 @@ app.get('/api/dumps/:id', authenticateToken, async (req, res) => {
         if (!dump) return res.status(404).json({ error: 'Dump not found' });
 
         // Authorization: owner, admin, or member of any group linked to dump
-        if (dump.UserId !== req.user.id && req.user.role !== 'admin') {
-            const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
-            const userGroupIds = new Set(memberships.map(m => m.GroupId));
-            const dumpGroupIds = new Set((dump.Groups || []).map(g => g.id));
-            const allowed = [...dumpGroupIds].some(id => userGroupIds.has(id));
-            if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+    if (dump.UserId !== req.user.id && req.user.role !== 'admin') {
+            if (!dump.isPublic) {
+                const memberships = await GroupMember.findAll({ where: { UserId: req.user.id } });
+                const userGroupIds = new Set(memberships.map(m => m.GroupId));
+                const dumpGroupIds = new Set((dump.Groups || []).map(g => g.id));
+                const allowed = [...dumpGroupIds].some(id => userGroupIds.has(id));
+                if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+            }
         }
 
         res.json(dump);
@@ -341,7 +343,7 @@ app.post('/api/dumps', authenticateToken, async (req, res) => {
                 optionB: q.options?.B || '',
                 optionC: q.options?.C || '',
                 optionD: q.options?.D || '',
-                correctAnswer: q.correctAnswer || 'A',
+                correctAnswer: Array.isArray(q.correctAnswers) ? q.correctAnswers.join(',') : (q.correctAnswer || 'A'),
                 DumpId: dump.id
             }));
             await Question.bulkCreate(rows);
@@ -378,7 +380,7 @@ app.put('/api/dumps/:id', authenticateToken, async (req, res) => {
                 optionB: q.options?.B || '',
                 optionC: q.options?.C || '',
                 optionD: q.options?.D || '',
-                correctAnswer: q.correctAnswer || 'A',
+                correctAnswer: Array.isArray(q.correctAnswers) ? q.correctAnswers.join(',') : (q.correctAnswer || 'A'),
                 DumpId: dump.id
             }));
             await Question.bulkCreate(rows);
@@ -668,10 +670,20 @@ app.get('/api/history', authenticateToken, async (req, res) => {
             whereClause.dumpName = { [Op.like]: `%${search}%` };
         }
 
-        const history = await History.findAll({
+        const rows = await History.findAll({
             where: whereClause,
             order: [['createdAt', 'DESC']]
         });
+        const history = rows.map(h => ({
+            id: h.id,
+            userId: h.UserId,
+            dumpId: h.DumpId,
+            dumpName: h.dumpName,
+            score: h.score,
+            total: h.total,
+            answers: h.answers,
+            createdAt: h.createdAt
+        }));
         res.json(history);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -681,7 +693,7 @@ app.get('/api/history', authenticateToken, async (req, res) => {
 app.post('/api/history', authenticateToken, async (req, res) => {
     try {
         const { dumpId, dumpName, score, total, answers } = req.body;
-        const history = await History.create({
+        const h = await History.create({
             UserId: req.user.id,
             DumpId: dumpId,
             dumpName,
@@ -689,7 +701,16 @@ app.post('/api/history', authenticateToken, async (req, res) => {
             total,
             answers
         });
-        res.json(history);
+        res.json({
+            id: h.id,
+            userId: h.UserId,
+            dumpId: h.DumpId,
+            dumpName: h.dumpName,
+            score: h.score,
+            total: h.total,
+            answers: h.answers,
+            createdAt: h.createdAt
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useI18n } from '../context/I18nContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen, User, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -38,6 +39,7 @@ const AuthPage = () => {
         }
     };
 
+    const { t } = useI18n();
     return (
         <div className="auth-container animated-auth">
             <div className="auth-card animated-card">
@@ -62,39 +64,39 @@ const AuthPage = () => {
                         <BookOpen size={32} />
                         <h1>Dumps Master</h1>
                     </div>
-                    <p>{isLogin ? 'Welcome back! Login to continue.' : 'Create an account to start learning.'}</p>
+                    <p>{isLogin ? t('auth.login') : t('auth.signup')}</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="auth-form">
                     <div className="form-group">
-                        <label>Username</label>
+                        <label>{t('auth.email')}</label>
                         <div className="input-wrapper">
                             <User size={20} />
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                placeholder="Enter your username"
+                                placeholder="you@example.com"
                             />
                         </div>
                     </div>
 
                     <div className="form-group">
-                        <label>Password</label>
+                        <label>{t('auth.password')}</label>
                         <div className="input-wrapper" style={{ position: 'relative' }}>
                             <Lock size={20} />
                             <input
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Enter your password"
+                                placeholder="••••••••"
                                 style={{ paddingRight: '40px' }}
                             />
                             <button
                                 type="button"
                                 className="icon-btn"
                                 onClick={() => setShowPassword(!showPassword)}
-                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                                 style={{ position: 'absolute', right: '8px', padding: '4px', background: 'transparent' }}
                             >
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -105,15 +107,15 @@ const AuthPage = () => {
                     {error && <div className="error-message">{error}</div>}
 
                     <button type="submit" className="auth-button">
-                        {isLogin ? 'Login' : 'Sign Up'} <ArrowRight size={20} />
+                        {isLogin ? t('auth.login') : t('auth.signup')} <ArrowRight size={20} />
                     </button>
                 </form>
 
                 <div className="auth-footer">
                     <p>
-                        {isLogin ? "Don't have an account? " : "Already have an account? "}
+                        {isLogin ? t('auth.togglePrefix.login') : t('auth.togglePrefix.signup')}
                         <button onClick={() => setIsLogin(!isLogin)} className="link-button">
-                            {isLogin ? 'Sign Up' : 'Login'}
+                            {isLogin ? t('auth.toggleLink.login') : t('auth.toggleLink.signup')}
                         </button>
                     </p>
                 </div>

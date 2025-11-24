@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { Users, FileText, Trash2, Shield, BarChart3, Tag, Edit, UserCog, Plus, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useI18n } from '../context/I18nContext';
 
 const AdminPage = () => {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -38,6 +39,7 @@ const AdminPage = () => {
     const [historyDate, setHistoryDate] = useState('');
 
     const navigate = useNavigate();
+    const { t } = useI18n();
 
     useEffect(() => {
         loadData();
@@ -227,30 +229,30 @@ const AdminPage = () => {
         }
     };
 
-    if (loading) return <div className="admin-container"><p>Loading...</p></div>;
+    if (loading) return <div className="admin-container"><p>{t('common.loading')}</p></div>;
 
     return (
         <div className="admin-container">
             <div className="admin-header">
-                <h2><Shield size={28} /> Admin Dashboard</h2>
+                <h2><Shield size={28} /> {t('admin.title')}</h2>
                 <div className="admin-tabs">
                     <button className={`tab-button ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-                        <BarChart3 size={18} /> Analytics
+                        <BarChart3 size={18} /> {t('admin.tabs.analytics')}
                     </button>
                     <button className={`tab-button ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-                        <Users size={18} /> Users
+                        <Users size={18} /> {t('admin.tabs.users')}
                     </button>
                     <button className={`tab-button ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
-                        <Tag size={18} /> Categories
+                        <Tag size={18} /> {t('admin.tabs.categories')}
                     </button>
                     <button className={`tab-button ${activeTab === 'dumps' ? 'active' : ''}`} onClick={() => setActiveTab('dumps')}>
-                        <FileText size={18} /> Dumps
+                        <FileText size={18} /> {t('admin.tabs.dumps')}
                     </button>
                     <button className={`tab-button ${activeTab === 'groups' ? 'active' : ''}`} onClick={() => setActiveTab('groups')}>
-                        <Users size={18} /> Groups
+                        <Users size={18} /> {t('admin.tabs.groups')}
                     </button>
                     <button className={`tab-button ${activeTab === 'questions' ? 'active' : ''}`} onClick={() => setActiveTab('questions')}>
-                        <FileText size={18} /> Questions
+                        <FileText size={18} /> {t('admin.tabs.questions')}
                     </button>
                 </div>
             </div>
@@ -259,37 +261,37 @@ const AdminPage = () => {
                 {/* Dashboard Tab */}
                 {activeTab === 'dashboard' && stats && (
                     <div className="dashboard-stats">
-                        <h3>Platform Overview</h3>
+                        <h3>{t('admin.dashboard.platformOverview')}</h3>
                         <div className="stats-grid">
                             <div className="stat-card">
                                 <Users size={32} className="stat-icon" />
                                 <div className="stat-value">{stats.overview.totalUsers}</div>
-                                <div className="stat-label">Total Users</div>
+                                <div className="stat-label">{t('admin.dashboard.totalUsers')}</div>
                             </div>
                             <div className="stat-card">
                                 <FileText size={32} className="stat-icon" />
                                 <div className="stat-value">{stats.overview.totalDumps}</div>
-                                <div className="stat-label">Total Dumps</div>
+                                <div className="stat-label">{t('admin.dashboard.totalDumps')}</div>
                             </div>
                             <div className="stat-card">
                                 <BarChart3 size={32} className="stat-icon" />
                                 <div className="stat-value">{stats.overview.totalQuizzes}</div>
-                                <div className="stat-label">Quizzes Taken</div>
+                                <div className="stat-label">{t('admin.dashboard.quizzesTaken')}</div>
                             </div>
                             <div className="stat-card">
                                 <Shield size={32} className="stat-icon" />
                                 <div className="stat-value">{stats.overview.avgScore}%</div>
-                                <div className="stat-label">Avg Score</div>
+                                <div className="stat-label">{t('admin.dashboard.avgScore')}</div>
                             </div>
                         </div>
 
-                        <h3 style={{ marginTop: '2rem' }}>Most Popular Dumps</h3>
+                        <h3 style={{ marginTop: '2rem' }}>{t('admin.dashboard.popularDumps')}</h3>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Dump Name</th>
-                                        <th>Attempts</th>
+                                        <th>{t('admin.popular.dumpName')}</th>
+                                        <th>{t('admin.popular.attempts')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -303,13 +305,13 @@ const AdminPage = () => {
                             </table>
                         </div>
 
-                        <h3 style={{ marginTop: '2rem' }}>Dumps by Category</h3>
+                        <h3 style={{ marginTop: '2rem' }}>{t('admin.dashboard.dumpsByCategory')}</h3>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Category</th>
-                                        <th>Count</th>
+                                        <th>{t('admin.common.category')}</th>
+                                        <th>{t('admin.common.count')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -323,13 +325,13 @@ const AdminPage = () => {
                             </table>
                         </div>
 
-                        <h3 style={{ marginTop: '2rem' }}>Quizzes by Date (30 days)</h3>
+                        <h3 style={{ marginTop: '2rem' }}>{t('admin.dashboard.quizzesByDate')}</h3>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Date</th>
-                                        <th>Quizzes</th>
+                                        <th>{t('admin.common.date')}</th>
+                                        <th>{t('admin.common.quizzes')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -349,14 +351,14 @@ const AdminPage = () => {
                 {activeTab === 'users' && (
                     <div className="users-management">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3>User Management ({users.length} users)</h3>
+                            <h3>{t('admin.users.management')} ({users.length} users)</h3>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <div className="input-wrapper" style={{ width: '280px' }}>
                                     <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-                                    <input type="text" placeholder="Search username" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+                                    <input type="text" placeholder={t('admin.users.searchUsername')} value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
                                 </div>
                                 <select value={userRole} onChange={(e) => setUserRole(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                                    <option>All</option>
+                                    <option>{t('admin.common.all')}</option>
                                     <option>user</option>
                                     <option>admin</option>
                                 </select>
@@ -366,13 +368,13 @@ const AdminPage = () => {
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Username</th>
-                                        <th>Role</th>
-                                        <th>Dumps</th>
-                                        <th>Quizzes</th>
-                                        <th>Avg Score</th>
-                                        <th>Joined</th>
-                                        <th>Actions</th>
+                                        <th>{t('admin.table.username')}</th>
+                                        <th>{t('admin.table.role')}</th>
+                                        <th>{t('admin.table.dumps')}</th>
+                                        <th>{t('admin.table.quizzes')}</th>
+                                        <th>{t('admin.table.avgScore')}</th>
+                                        <th>{t('admin.table.joined')}</th>
+                                        <th>{t('admin.table.actions')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -401,7 +403,7 @@ const AdminPage = () => {
                                                 <button
                                                     className="icon-btn delete"
                                                     onClick={() => handleDeleteUser(user.id)}
-                                                    title="Delete User"
+                                                    title={t('admin.action.deleteUser')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -419,26 +421,26 @@ const AdminPage = () => {
                     <div className="categories-management">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <h3>Category Management ({categories.length} categories)</h3>
+                                <h3>{t('admin.categories.management')} ({t('admin.categories.count', { count: categories.length })})</h3>
                                 <div className="input-wrapper" style={{ width: '320px' }}>
                                     <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-                                    <input type="text" placeholder="Search code, name, description" value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} />
+                                    <input type="text" placeholder={t('admin.categories.searchPlaceholder')} value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} />
                                 </div>
                             </div>
                             <button className="add-button" onClick={handleAddCategory}>
-                                <Plus size={20} /> Add Category
+                                <Plus size={20} /> {t('admin.categories.add')}
                             </button>
                         </div>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Code</th>
-                                        <th>Name</th>
-                                        <th>Description</th>
-                                        <th>Public</th>
-                                        <th>Group</th>
-                                        <th>Actions</th>
+                                        <th>{t('admin.categories.code')}</th>
+                                        <th>{t('admin.categories.name')}</th>
+                                        <th>{t('admin.categories.description')}</th>
+                                        <th>{t('admin.categories.public')}</th>
+                                        <th>{t('admin.categories.group')}</th>
+                                        <th>{t('admin.table.actions')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -450,13 +452,13 @@ const AdminPage = () => {
                                             <td><strong>{cat.code}</strong></td>
                                             <td>{cat.name}</td>
                                             <td>{cat.description || '-'}</td>
-                                            <td>{cat.isPublic ? 'Yes' : 'No'}</td>
+                                            <td>{cat.isPublic ? t('admin.common.yes') : t('admin.common.no')}</td>
                                             <td>{groups.find(g => g.id === cat.GroupId)?.name || '-'}</td>
                                             <td>
-                                                <button className="icon-btn" onClick={() => handleEditCategory(cat)} title="Edit">
+                                                <button className="icon-btn" onClick={() => handleEditCategory(cat)} title={t('admin.action.edit')}>
                                                     <Edit size={16} />
                                                 </button>
-                                                <button className="icon-btn delete" onClick={() => handleDeleteCategory(cat.id)} title="Delete">
+                                                <button className="icon-btn delete" onClick={() => handleDeleteCategory(cat.id)} title={t('admin.action.delete')}>
                                                     <Trash2 size={16} />
                                                 </button>
                                             </td>
@@ -498,13 +500,13 @@ const AdminPage = () => {
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Category</th>
-                                        <th>Owner</th>
-                                        <th>Questions</th>
-                                        <th>Public</th>
-                                        <th>Created</th>
-                                        <th>Actions</th>
+                                        <th>{t('admin.dumps.name')}</th>
+                                        <th>{t('admin.dumps.category')}</th>
+                                        <th>{t('admin.dumps.owner')}</th>
+                                        <th>{t('admin.dumps.questions')}</th>
+                                        <th>{t('admin.dumps.public')}</th>
+                                        <th>{t('admin.dumps.created')}</th>
+                                        <th>{t('admin.table.actions')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -514,20 +516,20 @@ const AdminPage = () => {
                                             <td>{dump.category}</td>
                                             <td>{dump.User?.username || 'Unknown'}</td>
                                             <td>{dump.questions.length}</td>
-                                            <td>{dump.isPublic ? 'Yes' : 'No'}</td>
+                                            <td>{dump.isPublic ? t('admin.common.yes') : t('admin.common.no')}</td>
                                             <td>{new Date(dump.createdAt).toLocaleDateString()}</td>
                                             <td>
                                                 <button
                                                     className="icon-btn"
                                                     onClick={() => navigate(`/dump/${dump.id}/edit`, { state: { dump } })}
-                                                    title="Edit"
+                                                    title={t('admin.action.edit')}
                                                 >
                                                     <Edit size={16} />
                                                 </button>
                                                 <button
                                                     className="icon-btn delete"
                                                     onClick={() => handleDeleteDump(dump.id)}
-                                                    title="Delete"
+                                                    title={t('admin.action.delete')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -543,16 +545,16 @@ const AdminPage = () => {
                 {activeTab === 'groups' && (
                     <div className="dumps-management">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3>All Groups ({groups.length})</h3>
+                            <h3>{t('admin.groups.all')} ({groups.length})</h3>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <div className="input-wrapper" style={{ width: '320px' }}>
                                     <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-                                    <input type="text" placeholder="Search name or owner" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
+                                    <input type="text" placeholder={t('admin.groups.search')} value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
                                 </div>
                                 <select value={groupStatus} onChange={(e) => setGroupStatus(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                                    <option>All</option>
-                                    <option>Active</option>
-                                    <option>Inactive</option>
+                                    <option>{t('admin.common.all')}</option>
+                                    <option>{t('admin.groups.active')}</option>
+                                    <option>{t('admin.groups.inactive')}</option>
                                 </select>
                             </div>
                         </div>
@@ -560,11 +562,11 @@ const AdminPage = () => {
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Owner</th>
-                                        <th>Status</th>
-                                        <th>Manage</th>
-                                        <th>Actions</th>
+                                        <th>{t('admin.dumps.name')}</th>
+                                        <th>{t('admin.dumps.owner')}</th>
+                                        <th>{t('admin.groups.status')}</th>
+                                        <th>{t('admin.groups.manage')}</th>
+                                        <th>{t('admin.table.actions')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -578,15 +580,15 @@ const AdminPage = () => {
                                             <td>{g.name}</td>
                                             <td>{g.User?.username || '-'}</td>
                                             <td>
-                                                <span className={`status-badge ${g.isActive ? 'active' : 'inactive'}`}>{g.isActive ? 'Active' : 'Inactive'}</span>
+                                                <span className={`status-badge ${g.isActive ? 'active' : 'inactive'}`}>{g.isActive ? t('admin.groups.active') : t('admin.groups.inactive')}</span>
                                             </td>
                                             <td>
-                                                <button className="icon-btn" onClick={() => openManageGroup(g)} title="Manage">
+                                                <button className="icon-btn" onClick={() => openManageGroup(g)} title={t('admin.groups.manage')}>
                                                     <Edit size={16} />
                                                 </button>
                                             </td>
                                             <td>
-                                                <button className="icon-btn delete" onClick={() => handleDeleteGroup(g.id)} title="Delete">
+                                                <button className="icon-btn delete" onClick={() => handleDeleteGroup(g.id)} title={t('admin.action.delete')}>
                                                     <Trash2 size={16} />
                                                 </button>
                                             </td>
@@ -601,11 +603,11 @@ const AdminPage = () => {
                 {activeTab === 'questions' && (
                     <div className="dumps-management">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3>All Questions ({questions.length})</h3>
+                            <h3>{t('admin.questions.all')} ({questions.length})</h3>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <div className="input-wrapper" style={{ minWidth: '280px' }}>
                                     <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-                                    <input type="text" placeholder="Search question or dump" value={questionSearch} onChange={(e) => setQuestionSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadQuestions(); }} />
+                                    <input type="text" placeholder={t('admin.questions.search')} value={questionSearch} onChange={(e) => setQuestionSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadQuestions(); }} />
                                 </div>
                                 <select value={questionGroup} onChange={(e) => setQuestionGroup(e.target.value)} style={{
                                     padding: '8px 12px',
@@ -614,16 +616,16 @@ const AdminPage = () => {
                                     background: 'var(--bg-card)',
                                     color: 'var(--text-primary)'
                                 }}>
-                                    <option value="">All Groups</option>
+                                    <option value="">{t('admin.questions.allGroups')}</option>
                                     {groups.map(g => (
                                         <option key={g.id} value={g.id}>{g.name}</option>
                                     ))}
                                 </select>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <input type="checkbox" checked={questionExact} onChange={(e) => setQuestionExact(e.target.checked)} />
-                                    Exact match
+                                    {t('admin.questions.exactMatch')}
                                 </label>
-                                <button className="control-button" onClick={loadQuestions}>Filter</button>
+                                <button className="control-button" onClick={loadQuestions}>{t('admin.questions.filter')}</button>
                                 <button className="control-button secondary" onClick={async () => {
                                     try {
                                         const blob = await api.exportAdminQuestions(questionSearch, questionGroup, questionExact);
@@ -638,17 +640,17 @@ const AdminPage = () => {
                                     } catch (err) {
                                         alert(err.message);
                                     }
-                                }}>Export</button>
+                                }}>{t('admin.questions.export')}</button>
                             </div>
                         </div>
                         <div className="table-container">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>Question</th>
-                                        <th>Dump</th>
-                                        <th>Owner</th>
-                                        <th>Groups</th>
+                                        <th>{t('admin.questions.question')}</th>
+                                        <th>{t('admin.questions.dump')}</th>
+                                        <th>{t('admin.questions.owner')}</th>
+                                        <th>{t('admin.questions.groups')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -672,51 +674,51 @@ const AdminPage = () => {
         {showCategoryModal && (
             <div className="modal-overlay" onClick={() => setShowCategoryModal(false)}>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
+                        <h3>{editingCategory ? t('admin.categories.edit') : t('admin.categories.add')}</h3>
                         <div className="form-group">
-                            <label>Code (e.g., CSA)</label>
-                            <input
-                                type="text"
-                                value={categoryForm.code}
-                                onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })}
-                                placeholder="CSA"
-                            />
+                            <label>{t('admin.categories.code')}</label>
+                                <input
+                                    type="text"
+                                    value={categoryForm.code}
+                                    onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })}
+                                placeholder={t('admin.categories.placeholder.code')}
+                                />
                         </div>
                         <div className="form-group">
-                            <label>Name</label>
-                            <input
-                                type="text"
-                                value={categoryForm.name}
-                                onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                                placeholder="CSA - Certified System Administrator"
-                            />
+                            <label>{t('admin.categories.name')}</label>
+                                <input
+                                    type="text"
+                                    value={categoryForm.name}
+                                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                                placeholder={t('admin.categories.placeholder.name')}
+                                />
                         </div>
                         <div className="form-group">
-                            <label>Description (optional)</label>
-                            <textarea
-                                value={categoryForm.description}
-                                onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                                placeholder="ServiceNow System Administrator certification"
-                                rows={3}
-                            />
+                            <label>{t('admin.categories.description')}</label>
+                                <textarea
+                                    value={categoryForm.description}
+                                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                                placeholder={t('admin.categories.placeholder.description')}
+                                    rows={3}
+                                />
                         </div>
                         <div className="form-group">
-                            <label>Public</label>
+                            <label>{t('admin.categories.public')}</label>
                             <select
                                 value={categoryForm.isPublic ? 'true' : 'false'}
                                 onChange={(e) => setCategoryForm({ ...categoryForm, isPublic: e.target.value === 'true' })}
                             >
-                                <option value="true">Yes</option>
-                                <option value="false">No</option>
+                                <option value="true">{t('admin.common.yes')}</option>
+                                <option value="false">{t('admin.common.no')}</option>
                             </select>
                         </div>
                         <div className="form-group">
-                            <label>Group (optional)</label>
+                            <label>{t('admin.categories.groupOptional')}</label>
                             <select
                                 value={categoryForm.groupId || ''}
                                 onChange={(e) => setCategoryForm({ ...categoryForm, groupId: e.target.value })}
                             >
-                                <option value="">None</option>
+                                <option value="">{t('admin.common.none')}</option>
                                 {groups.map(g => (
                                     <option key={g.id} value={g.id}>{g.name}</option>
                                 ))}
@@ -724,10 +726,10 @@ const AdminPage = () => {
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
                             <button className="control-button secondary" onClick={() => setShowCategoryModal(false)}>
-                                Cancel
+                                {t('admin.common.cancel')}
                             </button>
                             <button className="control-button primary" onClick={handleSaveCategory}>
-                                {editingCategory ? 'Update' : 'Create'}
+                                {editingCategory ? t('admin.common.update') : t('common.create')}
                             </button>
                         </div>
                     </div>
@@ -738,12 +740,12 @@ const AdminPage = () => {
         {showGroupModal && managingGroup && (
             <div className="modal-overlay" onClick={() => setShowGroupModal(false)}>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                    <h3>Manage Group: {managingGroup.name}</h3>
+                    <h3>{t('admin.manageGroup.title')}: {managingGroup.name}</h3>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div />
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span>Status:</span>
-                            <span className={`status-badge ${managingGroup.isActive ? 'active' : 'inactive'}`}>{managingGroup.isActive ? 'Active' : 'Inactive'}</span>
+                            <span>{t('admin.manageGroup.status')}</span>
+                            <span className={`status-badge ${managingGroup.isActive ? 'active' : 'inactive'}`}>{managingGroup.isActive ? t('admin.groups.active') : t('admin.groups.inactive')}</span>
                             <button className="control-button" onClick={async () => {
                                 try {
                                     await api.updateGroupActive(managingGroup.id, !managingGroup.isActive);
@@ -752,16 +754,16 @@ const AdminPage = () => {
                                 } catch (err) {
                                     alert(err.message);
                                 }
-                            }}>{managingGroup.isActive ? 'Set Inactive' : 'Set Active'}</button>
+                            }}>{managingGroup.isActive ? t('admin.manageGroup.setInactive') : t('admin.manageGroup.setActive')}</button>
                         </div>
                     </div>
                     <div className="table-container" style={{ marginTop: '1rem' }}>
                         <table className="admin-table">
                             <thead>
                                 <tr>
-                                    <th>Member</th>
-                                    <th>Role</th>
-                                    <th>Actions</th>
+                                    <th>{t('admin.manageGroup.member')}</th>
+                                    <th>{t('admin.manageGroup.role')}</th>
+                                    <th>{t('admin.table.actions')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -792,7 +794,7 @@ const AdminPage = () => {
                         </table>
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                        <button className="control-button secondary" onClick={() => setShowGroupModal(false)}>Close</button>
+                        <button className="control-button secondary" onClick={() => setShowGroupModal(false)}>{t('admin.common.close')}</button>
                     </div>
                 </div>
             </div>
@@ -802,7 +804,7 @@ const AdminPage = () => {
         {showHistoryModal && (
             <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                    <h3>Quiz History for {historyDate}</h3>
+                    <h3>{t('admin.history.titleForDate', { date: historyDate })}</h3>
                     <div className="table-container" style={{ marginTop: '1rem' }}>
                         <table className="admin-table">
                             <thead>
@@ -826,7 +828,7 @@ const AdminPage = () => {
                         </table>
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                        <button className="control-button secondary" onClick={() => setShowHistoryModal(false)}>Close</button>
+                        <button className="control-button secondary" onClick={() => setShowHistoryModal(false)}>{t('admin.common.close')}</button>
                     </div>
                 </div>
             </div>

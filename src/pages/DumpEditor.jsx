@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useI18n } from '../context/I18nContext';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { Save, ArrowLeft, Trash2, Globe, Lock, Clock, FileText, Plus, X, Check, Download, Upload, MoreVertical } from 'lucide-react';
@@ -75,7 +76,7 @@ const DumpEditor = () => {
                 setQuestions(found.questions || []);
                 setError('');
             } else {
-                setError('Dump not found');
+                setError(t('errors.dumpNotFound'));
                 setDump(null);
             }
         } catch (err) {
@@ -92,11 +93,11 @@ const DumpEditor = () => {
                     setQuestions(found.questions || []);
                     setError('');
                 } else {
-                    setError(err.message || 'Failed to load dump');
+                    setError(err.message || t('errors.failedToLoadDump'));
                     setDump(null);
                 }
             } catch (err2) {
-                setError(err.message || err2.message || 'Failed to load dump');
+                setError(err.message || err2.message || t('errors.failedToLoadDump'));
                 setDump(null);
             }
         } finally {
@@ -155,7 +156,7 @@ const DumpEditor = () => {
             return;
         }
         if (!id) {
-            alert('Invalid dump ID');
+            alert(t('errors.invalidDumpId'));
             return;
         }
 
@@ -194,7 +195,7 @@ const DumpEditor = () => {
     const handleDuplicateAction = async (action) => {
         if (!importFile) return;
         if (!id) {
-            alert('Invalid dump ID');
+            alert(t('errors.invalidDumpId'));
             return;
         }
 
@@ -232,7 +233,11 @@ const DumpEditor = () => {
 
     const handleEditQuestion = (index) => {
         setEditingIndex(index);
-        setNewQuestion({ ...questions[index] });
+        const q = questions[index] || {};
+        const corrects = Array.isArray(q.correctAnswers)
+            ? q.correctAnswers
+            : (q.correctAnswer ? [q.correctAnswer] : []);
+        setNewQuestion({ ...q, correctAnswers: corrects });
         setShowAddModal(true);
     };
 
@@ -241,19 +246,23 @@ const DumpEditor = () => {
             alert('Please fill in the question and at least options A and B.');
             return;
         }
-
+        const selectedCorrects = Array.isArray(newQuestion.correctAnswers) ? newQuestion.correctAnswers : (newQuestion.correctAnswer ? [newQuestion.correctAnswer] : []);
+        if (selectedCorrects.length === 0) {
+            alert('Please select at least one correct answer.');
+            return;
+        }
         const updatedQuestions = [...questions];
         if (editingIndex >= 0) {
-            updatedQuestions[editingIndex] = newQuestion;
+            updatedQuestions[editingIndex] = { ...newQuestion, correctAnswers: selectedCorrects, correctAnswer: selectedCorrects[0] };
         } else {
-            updatedQuestions.push(newQuestion);
+            updatedQuestions.push({ ...newQuestion, correctAnswers: selectedCorrects, correctAnswer: selectedCorrects[0] });
         }
 
         setQuestions(updatedQuestions);
         setNewQuestion({
             question: '',
             options: { A: '', B: '', C: '', D: '' },
-            correctAnswer: 'A'
+            correctAnswers: []
         });
         setEditingIndex(-1);
         setShowAddModal(false);
@@ -264,11 +273,12 @@ const DumpEditor = () => {
         setNewQuestion({
             question: '',
             options: { A: '', B: '', C: '', D: '' },
-            correctAnswer: 'A'
+            correctAnswers: []
         });
         setShowAddModal(true);
     };
 
+    const { t } = useI18n();
     if (loading && !dump && !error) {
         return (
             <div className="dashboard-container">
@@ -277,7 +287,7 @@ const DumpEditor = () => {
                         <button onClick={() => navigate(-1)} className="icon-btn" title="Back">
                             <ArrowLeft size={24} />
                         </button>
-                        <h2>Edit Dump</h2>
+                        <h2>{t('editor.title')}</h2>
                     </div>
                 </div>
                 <div className="loading-spinner">Loading...</div>
@@ -294,7 +304,7 @@ const DumpEditor = () => {
                         <button onClick={() => navigate(-1)} className="icon-btn" title="Back">
                             <ArrowLeft size={24} />
                         </button>
-                        <h2>Edit Dump</h2>
+                        <h2>{t('editor.title')}</h2>
                     </div>
                 </div>
                 <div className="dump-card" style={{ padding: '2rem', margin: '2rem auto', maxWidth: '600px' }}>
@@ -306,15 +316,15 @@ const DumpEditor = () => {
                         borderRadius: '8px',
                         marginBottom: '1rem'
                     }}>
-                        <strong>Error:</strong> {error}
+                        <strong>{t('common.errorLabel')}</strong> {error}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                         <button onClick={() => navigate(-1)} className="control-button secondary">
-                            Go Back
+                            {t('common.cancel')}
                         </button>
                         {isEditMode && (
                             <button onClick={loadDump} className="control-button primary">
-                                Retry
+                                {t('common.loading')}
                             </button>
                         )}
                     </div>
@@ -347,7 +357,7 @@ const DumpEditor = () => {
                     justifyContent: 'space-between',
                     alignItems: 'center'
                 }}>
-                    <span><strong>Error:</strong> {error}</span>
+                    <span><strong>{t('common.errorLabel')}</strong> {error}</span>
                     <button 
                         onClick={() => setError('')} 
                         className="icon-btn" 
@@ -467,9 +477,9 @@ const DumpEditor = () => {
 
             <div className="questions-section">
                 <div className="section-header">
-                    <h3>Questions ({questions.length})</h3>
+                    <h3>{t('editor.questions')} ({questions.length})</h3>
                     <button className="add-button" onClick={openAddModal} style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
-                        <Plus size={18} /> Add Question
+                        <Plus size={18} /> {t('editor.addQuestion')}
                     </button>
                 </div>
 
@@ -482,7 +492,7 @@ const DumpEditor = () => {
                                     {q.question}
                                 </div>
                                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                                    <span style={{ fontWeight: '500', color: 'var(--sn-green)' }}>Answer: {q.correctAnswer}</span>
+                                    <span style={{ fontWeight: '500', color: 'var(--sn-green)' }}>Answer: {(Array.isArray(q.correctAnswers) ? q.correctAnswers.join(',') : q.correctAnswer || '-')}</span>
                                     <span style={{ margin: '0 8px' }}>•</span>
                                     <span>{Object.keys(q.options).filter(k => q.options[k]).length} Options</span>
                                 </div>
@@ -512,18 +522,18 @@ const DumpEditor = () => {
                                 onClick={handleExport} 
                                 className="control-button tertiary" 
                                 disabled={loading}
-                                title="Export questions to Excel file"
+                                title="Xuất câu hỏi ra Excel"
                             >
                                 <Download size={18} />
-                                <span>Export</span>
+                                <span>{t('common.export')}</span>
                             </button>
                             <label 
                                 className={`control-button tertiary ${loading ? 'disabled' : ''}`}
                                 style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
-                                title="Import questions from Excel file"
+                                title="Nhập câu hỏi từ Excel"
                             >
                                 <Upload size={18} />
-                                <span>Import</span>
+                                <span>{t('common.import')}</span>
                                 <input 
                                     type="file" 
                                     accept=".xlsx,.xls" 
@@ -546,9 +556,9 @@ const DumpEditor = () => {
                                 }}
                                 className="control-button tertiary"
                                 disabled={loading}
-                                title="Share this dump to your groups"
+                                title="Chia sẻ bộ đề cho nhóm của bạn"
                             >
-                                Share to Groups
+                                {t('common.shareToGroups')}
                             </button>
                         </div>
                     )}
@@ -560,7 +570,7 @@ const DumpEditor = () => {
                             className="control-button secondary"
                             disabled={loading}
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </button>
                         <button 
                             onClick={handleSave} 
@@ -568,7 +578,7 @@ const DumpEditor = () => {
                             disabled={loading}
                         >
                             <Save size={18} />
-                            <span>{loading ? 'Saving...' : 'Save Changes'}</span>
+                            <span>{loading ? t('common.loading') : t('common.saveChanges')}</span>
                         </button>
                     </div>
                 </div>
@@ -577,7 +587,7 @@ const DumpEditor = () => {
             {showShareModal && (
                 <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <h3>Share to Your Groups</h3>
+                        <h3>{t('common.shareToGroups')}</h3>
                         <div className="input-wrapper" style={{ marginTop: '0.75rem' }}>
                             <span style={{ color: 'var(--text-secondary)' }}>🔎</span>
                             <input
@@ -616,9 +626,9 @@ const DumpEditor = () => {
                             })}
                         </div>
                         <div className="modal-actions" style={{ display: 'flex', gap: '1rem' }}>
-                            <button className="control-button secondary" onClick={() => setShowShareModal(false)}>Cancel</button>
+                            <button className="control-button secondary" onClick={() => setShowShareModal(false)}>{t('common.cancel')}</button>
                             <button className="control-button secondary" onClick={async () => { try { await api.setDumpGroups(id, []); setSelectedGroups([]); setShowShareModal(false); alert('Unshared from all groups'); } catch (err) { alert(err.message); } }}>Unshare All</button>
-                            <button className="control-button primary" onClick={submitShareToGroups}>Save</button>
+                            <button className="control-button primary" onClick={submitShareToGroups}>{t('common.saveChanges')}</button>
                         </div>
                     </div>
                 </div>
@@ -713,27 +723,27 @@ const DumpEditor = () => {
                     </div>
 
                     <div className="form-group">
-                        <label>Correct Answer</label>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            {['A', 'B', 'C', 'D'].map((opt) => (
-                                <button
-                                    key={opt}
-                                    onClick={() => setNewQuestion({ ...newQuestion, correctAnswer: opt })}
-                                    style={{
-                                        flex: 1,
-                                        padding: '10px',
-                                        borderRadius: '8px',
-                                        border: newQuestion.correctAnswer === opt ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
-                                        background: newQuestion.correctAnswer === opt ? 'rgba(65, 182, 230, 0.1)' : 'var(--bg-body)',
-                                        color: newQuestion.correctAnswer === opt ? 'var(--primary-color)' : 'var(--text-primary)',
-                                        fontWeight: '600',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    {opt}
-                                </button>
-                            ))}
+                        <label>Correct Answers</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                            {['A', 'B', 'C', 'D'].map((opt) => {
+                                const checked = (newQuestion.correctAnswers || []).includes(opt);
+                                return (
+                                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                                const prev = newQuestion.correctAnswers || [];
+                                                const next = e.target.checked ? [...prev, opt] : prev.filter(x => x !== opt);
+                                                setNewQuestion({ ...newQuestion, correctAnswers: next });
+                                            }}
+                                        />
+                                        <span style={{ fontWeight: '600' }}>{opt}</span>
+                                    </label>
+                                );
+                            })}
                         </div>
+                        <small style={{ color: 'var(--text-secondary)' }}>You can select multiple correct options</small>
                     </div>
 
                         <div className="modal-actions">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useI18n } from '../context/I18nContext';
 import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, ChevronRight, ChevronLeft } from 'lucide-react';
 
 const QuizInterface = ({
@@ -10,7 +11,7 @@ const QuizInterface = ({
     initialAnswers = {}
 }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [selectedOption, setSelectedOption] = useState(null);
+    const [selectedOptions, setSelectedOptions] = useState([]);
     const [isAnswered, setIsAnswered] = useState(false);
     const [score, setScore] = useState(0);
     const [answers, setAnswers] = useState(initialAnswers || {});
@@ -18,24 +19,32 @@ const QuizInterface = ({
     const [reviewMode, setReviewMode] = useState(initialReviewMode);
     const [showResultModal, setShowResultModal] = useState(false);
     const [showQuestionNav, setShowQuestionNav] = useState(true);
+    const { t } = useI18n();
+    const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         // If in review mode or revisiting a question, load the answer
         if (reviewMode || initialReviewMode) {
             // In review mode, always show answers if they exist
             if (answers[currentIndex]) {
-                setSelectedOption(answers[currentIndex].selected);
+                setSelectedOptions(answers[currentIndex].selected || []);
                 setIsAnswered(true);
             } else {
-                setSelectedOption(null);
+                setSelectedOptions([]);
                 setIsAnswered(false);
             }
         } else if (answers[currentIndex]) {
             // Normal mode - load previously answered question
-            setSelectedOption(answers[currentIndex].selected);
+            setSelectedOptions(answers[currentIndex].selected || []);
             setIsAnswered(true);
         } else {
-            setSelectedOption(null);
+            setSelectedOptions([]);
             setIsAnswered(false);
         }
     }, [currentIndex, answers, reviewMode, initialReviewMode]);
@@ -65,9 +74,9 @@ const QuizInterface = ({
         return (
             <div className="dashboard-container">
                 <div className="dump-card" style={{ padding: '2rem', textAlign: 'center' }}>
-                    <h3>Error: No questions available</h3>
+                    <h3>{t('common.errorLabel')} {t('errors.quiz.noQuestionsAvailable')}</h3>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
-                        This quiz has no questions to display.
+                        {t('errors.dumpHasNoQuestions')}
                     </p>
                 </div>
             </div>
@@ -81,9 +90,9 @@ const QuizInterface = ({
         return (
             <div className="dashboard-container">
                 <div className="dump-card" style={{ padding: '2rem', textAlign: 'center' }}>
-                    <h3>Error: Question not found</h3>
+                    <h3>{t('common.errorLabel')} {t('errors.quiz.questionNotFound')}</h3>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
-                        Unable to load the current question.
+                        {t('errors.quiz.questionNotFound')}
                     </p>
                 </div>
             </div>
@@ -91,21 +100,27 @@ const QuizInterface = ({
     }
 
     const handleOptionSelect = (optionKey) => {
-        if (isAnswered && showAnswerImmediately && !reviewMode) return; // Lock if practice mode
         if (reviewMode) return; // Lock if reviewing
+        const next = selectedOptions.includes(optionKey)
+            ? selectedOptions.filter(k => k !== optionKey)
+            : [...selectedOptions, optionKey];
+        setSelectedOptions(next);
+        setIsAnswered(next.length > 0);
 
-        setSelectedOption(optionKey);
-        setIsAnswered(true);
-
-        // Update answers state immediately
-        const isCorrect = optionKey === currentQuestion.correctAnswer;
+        const correctList = Array.isArray(currentQuestion.correctAnswers)
+            ? currentQuestion.correctAnswers
+            : (currentQuestion.correctAnswer ? [currentQuestion.correctAnswer] : []);
+        const selSet = new Set(next);
+        const corSet = new Set(correctList);
+        const sameSize = selSet.size === corSet.size;
+        const allMatch = sameSize && [...corSet].every(k => selSet.has(k));
 
         setAnswers(prev => ({
             ...prev,
             [currentIndex]: {
-                selected: optionKey,
-                correct: currentQuestion.correctAnswer,
-                isCorrect
+                selected: next,
+                correct: correctList,
+                isCorrect: allMatch
             }
         }));
     };
@@ -174,15 +189,19 @@ const QuizInterface = ({
 
     const getOptionClass = (key) => {
         // Review Mode or Practice Mode (Immediate Feedback)
+        const correctList = Array.isArray(currentQuestion.correctAnswers)
+            ? currentQuestion.correctAnswers
+            : (currentQuestion.correctAnswer ? [currentQuestion.correctAnswer] : []);
+        const isCorrectKey = correctList.includes(key);
+        const isSelectedKey = selectedOptions.includes(key);
         if (reviewMode || (isAnswered && showAnswerImmediately)) {
-            if (key === currentQuestion.correctAnswer) return 'correct';
-            if (selectedOption === key && key !== currentQuestion.correctAnswer) return 'wrong';
-            if (selectedOption === key) return 'correct';
+            if (isCorrectKey) return 'correct';
+            if (isSelectedKey && !isCorrectKey) return 'wrong';
             return 'disabled';
         }
 
         // Exam Mode (Hidden Feedback)
-        if (selectedOption === key) return 'selected';
+        if (isSelectedKey) return 'selected';
         return '';
     };
 
@@ -203,11 +222,12 @@ const QuizInterface = ({
                     right: showQuestionNav ? 'auto' : '0',
                     top: showQuestionNav ? 'auto' : '50%',
                     transform: showQuestionNav ? 'none' : 'translateY(-50%)',
-                    width: showQuestionNav ? '280px' : 'auto',
-                    minWidth: showQuestionNav ? '280px' : 'auto',
+                    width: showQuestionNav ? (isMobile ? '100%' : '280px') : 'auto',
+                    minWidth: showQuestionNav ? (isMobile ? '100%' : '280px') : 'auto',
                     flexShrink: 0,
                     transition: 'all 0.3s ease',
-                    zIndex: 100
+                    zIndex: isMobile ? 'auto' : 100,
+                    marginBottom: isMobile ? '1rem' : 0
                 }}
             >
                 {showQuestionNav ? (
@@ -217,10 +237,10 @@ const QuizInterface = ({
                         borderRadius: 'var(--radius)',
                         padding: '1.5rem',
                         boxShadow: 'var(--shadow-md)',
-                        position: 'sticky',
-                        top: '2rem',
-                        maxHeight: 'calc(100vh - 4rem)',
-                        overflowY: 'auto'
+                        position: isMobile ? 'relative' : 'sticky',
+                        top: isMobile ? 'auto' : '2rem',
+                        maxHeight: isMobile ? 'none' : 'calc(100vh - 4rem)',
+                        overflowY: isMobile ? 'visible' : 'auto'
                     }}>
                         <div style={{
                             display: 'flex',
@@ -236,7 +256,7 @@ const QuizInterface = ({
                                 color: 'var(--text-primary)',
                                 margin: 0
                             }}>
-                                Questions
+                                {t('quiz.questions')}
                             </h3>
                             <button
                                 onClick={() => setShowQuestionNav(false)}
@@ -332,16 +352,16 @@ const QuizInterface = ({
                             color: 'var(--text-secondary)'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                <span>Total:</span>
+                                <span>{t('quiz.total')}:</span>
                                 <strong style={{ color: 'var(--text-primary)' }}>{questions.length}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                <span>Answered:</span>
+                                <span>{t('quiz.answered')}:</span>
                                 <strong style={{ color: 'var(--text-primary)' }}>{Object.keys(answers).length}</strong>
                             </div>
                             {(reviewMode || showAnswerImmediately) && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>Correct:</span>
+                                    <span>{t('quiz.correct')}:</span>
                                     <strong style={{ color: 'var(--sn-green)' }}>
                                         {Object.values(answers).filter(a => a.isCorrect).length}
                                     </strong>
@@ -350,43 +370,55 @@ const QuizInterface = ({
                         </div>
                     </div>
                 ) : (
-                    <button
-                        onClick={() => setShowQuestionNav(true)}
-                        className="icon-btn"
-                        style={{
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px 0 0 8px',
-                            padding: '1rem 0.5rem',
-                            boxShadow: 'var(--shadow-md)',
-                            position: 'relative'
-                        }}
-                        aria-label="Show question navigator"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
+                    !isMobile && (
+                        <button
+                            onClick={() => setShowQuestionNav(true)}
+                            className="icon-btn"
+                            style={{
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '8px 0 0 8px',
+                                padding: '1rem 0.5rem',
+                                boxShadow: 'var(--shadow-md)',
+                                position: 'relative'
+                            }}
+                            aria-label="Show question navigator"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                    )
                 )}
             </div>
 
             {/* Main Quiz Content */}
             <div className="quiz-container" style={{ flex: 1, minWidth: 0 }}>
                 <div className="quiz-header">
+                    {isMobile && !showQuestionNav && (
+                        <button
+                            onClick={() => setShowQuestionNav(true)}
+                            className="icon-btn"
+                            style={{ marginRight: '0.5rem' }}
+                            aria-label="Show question navigator"
+                        >
+                            <ChevronRight size={20} />
+                        </button>
+                    )}
                     <span className="question-counter">
-                        Question {currentIndex + 1} / {questions.length}
+                        {t('quiz.questionCounter', { current: currentIndex + 1, total: questions.length })}
                     </span>
                     {timeLeft !== null && !reviewMode && (
                         <span className="timer" style={{ color: timeLeft < 60 ? 'var(--error)' : 'var(--text-primary)', fontWeight: 'bold' }}>
-                            Time Left: {formatTime(timeLeft)}
+                            {t('quiz.timeLeft')}: {formatTime(timeLeft)}
                         </span>
                     )}
                     {reviewMode && (
                         <span className="timer" style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>
-                            Review Mode
+                            {t('quiz.reviewMode')}
                         </span>
                     )}
                     {(showAnswerImmediately || reviewMode) && (
                         <span className="score-counter">
-                            Score: {reviewMode ? calculateScore() : Object.values(answers).filter(a => a.isCorrect).length}
+                            {t('quiz.score')}: {reviewMode ? calculateScore() : Object.values(answers).filter(a => a.isCorrect).length}
                         </span>
                     )}
                 </div>
@@ -401,16 +433,16 @@ const QuizInterface = ({
                                 key={key}
                                 className={`option-button ${getOptionClass(key)}`}
                                 onClick={() => handleOptionSelect(key)}
-                                disabled={reviewMode || (isAnswered && showAnswerImmediately)}
+                                disabled={reviewMode}
                             >
                                 <div className="option-key-wrapper">
                                     <span className="option-key">{key}</span>
                                 </div>
                                 <span className="option-text">{value}</span>
-                                {(reviewMode || (isAnswered && showAnswerImmediately)) && key === currentQuestion.correctAnswer && (
+                                {(reviewMode || (isAnswered && showAnswerImmediately)) && (Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
                                     <CheckCircle className="status-icon correct" size={20} />
                                 )}
-                                {(reviewMode || (isAnswered && showAnswerImmediately)) && selectedOption === key && key !== currentQuestion.correctAnswer && (
+                                {(reviewMode || (isAnswered && showAnswerImmediately)) && selectedOptions.includes(key) && !(Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
                                     <XCircle className="status-icon wrong" size={20} />
                                 )}
                             </button>
@@ -425,7 +457,7 @@ const QuizInterface = ({
                         className="control-button secondary"
                         onClick={handlePrevious}
                     >
-                        <ArrowLeft size={20} /> Previous
+                        <ArrowLeft size={20} /> {t('quiz.previous')}
                     </button>
                 ) : (
                     <div className="placeholder-button"></div>
@@ -436,8 +468,8 @@ const QuizInterface = ({
                     onClick={handleNext}
                 >
                     {currentIndex === questions.length - 1 
-                        ? (reviewMode ? 'Exit' : 'Finish') 
-                        : 'Next'} 
+                        ? (reviewMode ? t('quiz.exit') : t('quiz.finish')) 
+                        : t('quiz.next')} 
                     {currentIndex < questions.length - 1 && <ArrowRight size={20} />}
                 </button>
             </div>
@@ -450,16 +482,16 @@ const QuizInterface = ({
                     backdropFilter: 'blur(4px)'
                 }}>
                     <div className="dump-card" style={{ padding: '3rem', textAlign: 'center', maxWidth: '400px' }}>
-                        <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Quiz Completed!</h2>
+                        <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>{t('quiz.completed')}</h2>
                         <div className="score-percentage" style={{ fontSize: '4rem', color: 'var(--primary-color)', marginBottom: '1rem' }}>
                             {Math.round((score / questions.length) * 100)}%
                         </div>
                         <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-                            You scored {score} out of {questions.length}
+                            {t('quiz.scored', { score, total: questions.length })}
                         </p>
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                            <button onClick={handleExit} className="control-button secondary">Exit</button>
-                            <button onClick={handleReview} className="control-button primary">Review Answers</button>
+                            <button onClick={handleExit} className="control-button secondary">{t('quiz.exit')}</button>
+                            <button onClick={handleReview} className="control-button primary">{t('quiz.reviewAnswers')}</button>
                         </div>
                     </div>
                 </div>
