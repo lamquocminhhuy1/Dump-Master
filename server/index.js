@@ -168,10 +168,17 @@ app.put('/api/users/me', authenticateToken, upload.single('avatar'), async (req,
         // Profile updates
         const { bio, email, displayName, location } = req.body;
         const updateData = {};
-        if (bio !== undefined) updateData.bio = bio;
-        if (email !== undefined) updateData.email = email;
-        if (displayName !== undefined) updateData.displayName = displayName;
-        if (location !== undefined) updateData.location = location;
+        // Treat empty strings as null to avoid validation failures (e.g., email)
+        if (bio !== undefined && bio !== '') updateData.bio = bio;
+        if (email !== undefined) {
+            if (email === '') {
+                updateData.email = null;
+            } else {
+                updateData.email = email;
+            }
+        }
+        if (displayName !== undefined && displayName !== '') updateData.displayName = displayName;
+        if (location !== undefined && location !== '') updateData.location = location;
         if (req.file) {
             updateData.avatar = `/uploads/${req.file.filename}`;
         }
@@ -191,6 +198,10 @@ app.put('/api/users/me', authenticateToken, upload.single('avatar'), async (req,
             }
         });
     } catch (error) {
+        if (error.name === 'SequelizeValidationError') {
+            return res.status(400).json({ error: error.errors?.[0]?.message || 'Validation error' });
+        }
+        console.error('Update profile error:', error);
         res.status(500).json({ error: error.message });
     }
 });
