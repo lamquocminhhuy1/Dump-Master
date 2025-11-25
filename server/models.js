@@ -83,6 +83,10 @@ const Dump = sequelize.define('Dump', {
     category: {
         type: DataTypes.STRING,
         defaultValue: 'Uncategorized'
+    },
+    coverImage: {
+        type: DataTypes.STRING,
+        allowNull: true
     }
 });
 

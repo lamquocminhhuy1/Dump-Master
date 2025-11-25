@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../context/I18nContext';
 import { CheckCircle, XCircle, ArrowRight, ArrowLeft, RotateCcw, ChevronRight, ChevronLeft } from 'lucide-react';
+import { API_HOST } from '../utils/api';
+import HtmlEditor from './HtmlEditor';
 
 const QuizInterface = ({
     questions,
@@ -21,12 +23,30 @@ const QuizInterface = ({
     const [showQuestionNav, setShowQuestionNav] = useState(true);
     const { t } = useI18n();
     const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
+    const [quizTheme, setQuizTheme] = useState('default');
+    const [immediate, setImmediate] = useState(showAnswerImmediately);
+    const isScrollMode = quizTheme === 'bttn';
+    const headerRef = useRef(null);
+    const [navOffset, setNavOffset] = useState(0);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    useEffect(() => {
+        if (!headerRef.current) return;
+        const el = headerRef.current;
+        const mb = parseFloat(getComputedStyle(el).marginBottom || '0');
+        setNavOffset(el.offsetHeight + mb);
+        const onResize = () => {
+            const mb2 = parseFloat(getComputedStyle(el).marginBottom || '0');
+            setNavOffset(el.offsetHeight + mb2);
+        };
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [isMobile, quizTheme, immediate, reviewMode]);
 
     useEffect(() => {
         // If in review mode or revisiting a question, load the answer
@@ -63,6 +83,12 @@ const QuizInterface = ({
         return () => clearInterval(timer);
     }, [timeLeft, reviewMode, showResultModal]);
 
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise();
+        }
+    }, [currentIndex, reviewMode, immediate, questions]);
+
     const formatTime = (seconds) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -84,6 +110,13 @@ const QuizInterface = ({
     }
 
     const currentQuestion = questions[currentIndex];
+
+    const normalizeText = (s) => (s || '').trim().toLowerCase();
+    const isShortAnswerCorrect = (text, question) => {
+        const accepted = (question.acceptedAnswers || []).map(normalizeText);
+        const input = normalizeText(text);
+        return accepted.includes(input);
+    };
 
     // Safety check for current question
     if (!currentQuestion) {
@@ -123,6 +156,41 @@ const QuizInterface = ({
                 isCorrect: allMatch
             }
         }));
+    };
+
+    const updateAnswerFor = (index, nextSelected, question) => {
+        const correctList = Array.isArray(question.correctAnswers)
+            ? question.correctAnswers
+            : (question.correctAnswer ? [question.correctAnswer] : []);
+        const selSet = new Set(nextSelected);
+        const corSet = new Set(correctList);
+        const sameSize = selSet.size === corSet.size;
+        const allMatch = sameSize && [...corSet].every(k => selSet.has(k));
+
+        setAnswers(prev => ({
+            ...prev,
+            [index]: {
+                selected: nextSelected,
+                correct: correctList,
+                isCorrect: allMatch
+            }
+        }));
+    };
+
+    const handleToggleOptionFor = (index, optionKey) => {
+        if (reviewMode) return;
+        const question = questions[index];
+        const prevSel = answers[index]?.selected || [];
+        const next = prevSel.includes(optionKey)
+            ? prevSel.filter(k => k !== optionKey)
+            : [...prevSel, optionKey];
+        updateAnswerFor(index, next, question);
+    };
+
+    const handleSetSingleFor = (index, optionKey) => {
+        if (reviewMode) return;
+        const question = questions[index];
+        updateAnswerFor(index, [optionKey], question);
     };
 
     const calculateScore = () => {
@@ -180,8 +248,10 @@ const QuizInterface = ({
     };
 
     const getQuestionStatus = (index) => {
+        const q = questions[index];
         if (!answers[index]) return 'unanswered';
-        if (reviewMode || showAnswerImmediately) {
+        if (q && q.type === 'html_field') return 'answered';
+        if (reviewMode || immediate) {
             return answers[index].isCorrect ? 'correct' : 'wrong';
         }
         return 'answered';
@@ -194,7 +264,7 @@ const QuizInterface = ({
             : (currentQuestion.correctAnswer ? [currentQuestion.correctAnswer] : []);
         const isCorrectKey = correctList.includes(key);
         const isSelectedKey = selectedOptions.includes(key);
-        if (reviewMode || (isAnswered && showAnswerImmediately)) {
+        if (reviewMode || (isAnswered && immediate)) {
             if (isCorrectKey) return 'correct';
             if (isSelectedKey && !isCorrectKey) return 'wrong';
             return 'disabled';
@@ -205,8 +275,25 @@ const QuizInterface = ({
         return '';
     };
 
+  const getOptionClassFor = (index, key) => {
+        const question = questions[index];
+        const correctList = Array.isArray(question.correctAnswers)
+            ? question.correctAnswers
+            : (question.correctAnswer ? [question.correctAnswer] : []);
+        const isCorrectKey = correctList.includes(key);
+        const isSelectedKey = (answers[index]?.selected || []).includes(key);
+        if (reviewMode || immediate) {
+            if (isCorrectKey) return 'correct';
+            if (isSelectedKey && !isCorrectKey) return 'wrong';
+            return 'disabled';
+        }
+        if (isSelectedKey) return 'selected';
+        return '';
+  };
+
+
     return (
-        <div className="quiz-wrapper" style={{ 
+        <div className={`quiz-wrapper ${quizTheme === 'bttn' ? 'bttn-theme' : ''}`} style={{ 
             display: 'flex', 
             gap: '1.5rem', 
             maxWidth: '1400px', 
@@ -238,7 +325,8 @@ const QuizInterface = ({
                         padding: '1.5rem',
                         boxShadow: 'var(--shadow-md)',
                         position: isMobile ? 'relative' : 'sticky',
-                        top: isMobile ? 'auto' : '2rem',
+                        top: isMobile ? 'auto' : 0,
+                        marginTop: isMobile ? 0 : navOffset,
                         maxHeight: isMobile ? 'none' : 'calc(100vh - 4rem)',
                         overflowY: isMobile ? 'visible' : 'auto'
                     }}>
@@ -266,6 +354,12 @@ const QuizInterface = ({
                             >
                                 <ChevronRight size={20} />
                             </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{t('quiz.showImmediate')}</span>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <input type="checkbox" checked={immediate} onChange={(e) => setImmediate(e.target.checked)} />
+                            </label>
                         </div>
                         <div style={{
                             display: 'grid',
@@ -359,7 +453,7 @@ const QuizInterface = ({
                                 <span>{t('quiz.answered')}:</span>
                                 <strong style={{ color: 'var(--text-primary)' }}>{Object.keys(answers).length}</strong>
                             </div>
-                            {(reviewMode || showAnswerImmediately) && (
+                            {(reviewMode || immediate) && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span>{t('quiz.correct')}:</span>
                                     <strong style={{ color: 'var(--sn-green)' }}>
@@ -392,7 +486,7 @@ const QuizInterface = ({
 
             {/* Main Quiz Content */}
             <div className="quiz-container" style={{ flex: 1, minWidth: 0 }}>
-                <div className="quiz-header">
+                <div className="quiz-header" ref={headerRef}>
                     {isMobile && !showQuestionNav && (
                         <button
                             onClick={() => setShowQuestionNav(true)}
@@ -403,9 +497,22 @@ const QuizInterface = ({
                             <ChevronRight size={20} />
                         </button>
                     )}
-                    <span className="question-counter">
-                        {t('quiz.questionCounter', { current: currentIndex + 1, total: questions.length })}
-                    </span>
+                    {!isScrollMode && (
+                        <span className="question-counter">
+                            {t('quiz.questionCounter', { current: currentIndex + 1, total: questions.length })}
+                        </span>
+                    )}
+                    <div className="interface-toggle" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.9rem' }}>{t('quiz.interface.switch')}</span>
+                        <select
+                            value={quizTheme}
+                            onChange={(e) => setQuizTheme(e.target.value)}
+                            className="interface-select"
+                        >
+                            <option value="default">{t('quiz.interface.default')}</option>
+                            <option value="bttn">{t('quiz.interface.bttn')}</option>
+                        </select>
+                    </div>
                     {timeLeft !== null && !reviewMode && (
                         <span className="timer" style={{ color: timeLeft < 60 ? 'var(--error)' : 'var(--text-primary)', fontWeight: 'bold' }}>
                             {t('quiz.timeLeft')}: {formatTime(timeLeft)}
@@ -416,63 +523,255 @@ const QuizInterface = ({
                             {t('quiz.reviewMode')}
                         </span>
                     )}
-                    {(showAnswerImmediately || reviewMode) && (
+                    {(immediate || reviewMode) && (
                         <span className="score-counter">
                             {t('quiz.score')}: {reviewMode ? calculateScore() : Object.values(answers).filter(a => a.isCorrect).length}
                         </span>
                     )}
                 </div>
 
-                <div className="question-card">
-                <h3 className="question-text">{currentQuestion.question}</h3>
-
-                <div className="options-list">
-                    {Object.entries(currentQuestion.options).map(([key, value]) => (
-                        value && (
-                            <button
-                                key={key}
-                                className={`option-button ${getOptionClass(key)}`}
-                                onClick={() => handleOptionSelect(key)}
-                                disabled={reviewMode}
-                            >
-                                <div className="option-key-wrapper">
-                                    <span className="option-key">{key}</span>
-                                </div>
-                                <span className="option-text">{value}</span>
-                                {(reviewMode || (isAnswered && showAnswerImmediately)) && (Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
-                                    <CheckCircle className="status-icon correct" size={20} />
+                {isScrollMode ? (
+                    <div className="questions-list">
+                        {questions.map((q, idx) => (
+                            <div key={idx} id={`q-${idx}`} className="question-card">
+                                {q.isHtml ? (
+                                    <div className="question-text" dangerouslySetInnerHTML={{ __html: q.question }} />
+                                ) : (
+                                    <h3 className="question-text">{q.question}</h3>
                                 )}
-                                {(reviewMode || (isAnswered && showAnswerImmediately)) && selectedOptions.includes(key) && !(Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
-                                    <XCircle className="status-icon wrong" size={20} />
+                                {q.type === 'short_answer' ? (
+                                    <div className="options-list" style={{ paddingTop: '0.5rem' }}>
+                                        <input
+                                            type="text"
+                                            className="short-answer-input"
+                                            placeholder={t('editor.acceptedAnswers')}
+                                            value={answers[idx]?.text || ''}
+                                            onChange={(e) => {
+                                                if (reviewMode) return;
+                                                const text = e.target.value;
+                                                const correct = isShortAnswerCorrect(text, q);
+                                                setAnswers(prev => ({
+                                                    ...prev,
+                                                    [idx]: {
+                                                        text,
+                                                        isCorrect: correct
+                                                    }
+                                                }));
+                                            }}
+                                            disabled={reviewMode}
+                                        />
+                                        {(reviewMode || immediate) && (answers[idx]?.text || '').length > 0 && (
+                                            answers[idx]?.isCorrect ? (
+                                                <div className="inline-status" style={{ color: 'var(--sn-green)', marginTop: '0.5rem' }}>
+                                                    ✓
+                                                </div>
+                                            ) : (
+                                                <div className="inline-status" style={{ color: '#ef4444', marginTop: '0.5rem' }}>
+                                                    ✗
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                ) : q.type === 'html_field' ? (
+                                    <div className="options-list" style={{ paddingTop: '0.5rem' }}>
+                                        <HtmlEditor
+                                            value={answers[idx]?.html || ''}
+                                            onChange={(html) => {
+                                                if (reviewMode) return;
+                                                const hasContent = (html || '').replace(/<[^>]*>/g, '').trim().length > 0 || /<img\b/i.test(html || '');
+                                                setAnswers(prev => ({
+                                                    ...prev,
+                                                    [idx]: { html, isCorrect: hasContent }
+                                                }));
+                                            }}
+                                            disabled={reviewMode}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="options-list">
+                                        {Object.entries(q.options).map(([key, value]) => (
+                                            value && (
+                                                <label key={key} className={`option-button bttn-option ${getOptionClassFor(idx, key)}`}>
+                                                    <input
+                                                        type={(Array.isArray(q.correctAnswers) && q.correctAnswers.length > 1) ? 'checkbox' : 'radio'}
+                                                        className="bttn-radio"
+                                                        checked={(answers[idx]?.selected || []).includes(key)}
+                                                        onChange={() => ((Array.isArray(q.correctAnswers) && q.correctAnswers.length > 1) ? handleToggleOptionFor(idx, key) : handleSetSingleFor(idx, key))}
+                                                        disabled={reviewMode}
+                                                    />
+                                                    <span className="option-key-wrapper"><span className="option-key">{key}</span></span>
+                                                    {q.isHtml ? (
+                                                        <span className="option-text" dangerouslySetInnerHTML={{ __html: value }} />
+                                                    ) : (
+                                                        <span className="option-text">{value}</span>
+                                                    )}
+                                                    {(reviewMode || immediate) && (Array.isArray(q.correctAnswers) ? q.correctAnswers.includes(key) : key === q.correctAnswer) && (
+                                                        <CheckCircle className="status-icon correct" size={20} />
+                                                    )}
+                                                    {(reviewMode || immediate) && (answers[idx]?.selected || []).includes(key) && !(Array.isArray(q.correctAnswers) ? q.correctAnswers.includes(key) : key === q.correctAnswer) && (
+                                                        <XCircle className="status-icon wrong" size={20} />
+                                                    )}
+                                                </label>
+                                            )
+                                        ))}
+                                    </div>
                                 )}
-                            </button>
-                        )
-                    ))}
-                </div>
-            </div>
-
-            <div className="quiz-controls">
-                {currentIndex > 0 ? (
-                    <button
-                        className="control-button secondary"
-                        onClick={handlePrevious}
-                    >
-                        <ArrowLeft size={20} /> {t('quiz.previous')}
-                    </button>
+                            </div>
+                        ))}
+                    </div>
                 ) : (
-                    <div className="placeholder-button"></div>
+                    <div className="question-card">
+                        {currentQuestion.isHtml ? (
+                            <div className="question-text" dangerouslySetInnerHTML={{ __html: currentQuestion.question }} />
+                        ) : (
+                            <h3 className="question-text">{currentQuestion.question}</h3>
+                        )}
+                        {currentQuestion.type === 'short_answer' ? (
+                            <div className="options-list" style={{ paddingTop: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    className="short-answer-input"
+                                    placeholder={t('editor.acceptedAnswers')}
+                                    value={answers[currentIndex]?.text || ''}
+                                    onChange={(e) => {
+                                        if (reviewMode) return;
+                                        const text = e.target.value;
+                                        const correct = isShortAnswerCorrect(text, currentQuestion);
+                                        setSelectedOptions(text ? ['TEXT'] : []);
+                                        setIsAnswered(!!text);
+                                        setAnswers(prev => ({
+                                            ...prev,
+                                            [currentIndex]: {
+                                                text,
+                                                isCorrect: correct
+                                            }
+                                        }));
+                                    }}
+                                    disabled={reviewMode}
+                                />
+                                {(reviewMode || (isAnswered && immediate)) && (answers[currentIndex]?.text || '').length > 0 && (
+                                    answers[currentIndex]?.isCorrect ? (
+                                        <div className="inline-status" style={{ color: 'var(--sn-green)', marginTop: '0.5rem' }}>
+                                            ✓
+                                        </div>
+                                    ) : (
+                                        <div className="inline-status" style={{ color: '#ef4444', marginTop: '0.5rem' }}>
+                                            ✗
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        ) : currentQuestion.type === 'html_field' ? (
+                            <div className="options-list" style={{ paddingTop: '0.5rem' }}>
+                                <HtmlEditor
+                                    value={answers[currentIndex]?.html || ''}
+                                    onChange={(html) => {
+                                        if (reviewMode) return;
+                                        const hasContent = (html || '').replace(/<[^>]*>/g, '').trim().length > 0 || /<img\b/i.test(html || '');
+                                        setSelectedOptions(hasContent ? ['HTML'] : []);
+                                        setIsAnswered(hasContent);
+                                        setAnswers(prev => ({
+                                            ...prev,
+                                            [currentIndex]: { html, isCorrect: hasContent }
+                                        }));
+                                    }}
+                                    disabled={reviewMode}
+                                />
+                            </div>
+                        ) : (
+                            <div className="options-list">
+                                {Object.entries(currentQuestion.options).map(([key, value]) => (
+                                    value && (
+                                        <button
+                                            key={key}
+                                            className={`option-button ${getOptionClass(key)}`}
+                                            onClick={() => handleOptionSelect(key)}
+                                            disabled={reviewMode}
+                                        >
+                                            <div className="option-key-wrapper">
+                                                <span className="option-key">{key}</span>
+                                            </div>
+                                            {currentQuestion.isHtml ? (
+                                                <span className="option-text" dangerouslySetInnerHTML={{ __html: value }} />
+                                            ) : (
+                                                <span className="option-text">{value}</span>
+                                            )}
+                                            {(reviewMode || (isAnswered && immediate)) && (Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
+                                                <CheckCircle className="status-icon correct" size={20} />
+                                            )}
+                                            {(reviewMode || (isAnswered && immediate)) && selectedOptions.includes(key) && !(Array.isArray(currentQuestion.correctAnswers) ? currentQuestion.correctAnswers.includes(key) : key === currentQuestion.correctAnswer) && (
+                                                <XCircle className="status-icon wrong" size={20} />
+                                            )}
+                                        </button>
+                                    )
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
 
-                <button
-                    className="control-button primary"
-                    onClick={handleNext}
+            {!isScrollMode && !showResultModal && (
+                <div
+                    className="fixed-action-bar"
+                    style={{
+                        position: 'fixed',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'var(--bg-card)',
+                        borderTop: '1px solid var(--border-color)',
+                        boxShadow: 'var(--shadow-md)',
+                        padding: '0.5rem 0.75rem',
+                        zIndex: 200
+                    }}
                 >
-                    {currentIndex === questions.length - 1 
-                        ? (reviewMode ? t('quiz.exit') : t('quiz.finish')) 
-                        : t('quiz.next')} 
-                    {currentIndex < questions.length - 1 && <ArrowRight size={20} />}
-                </button>
-            </div>
+                    <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                        <button
+                            className="control-button secondary"
+                            onClick={handlePrevious}
+                            disabled={currentIndex === 0}
+                        >
+                            <ArrowLeft size={20} /> {t('quiz.previous')}
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <button
+                                className="control-button tertiary"
+                                onClick={() => { reviewMode ? handleExit() : finishQuiz(); }}
+                            >
+                                <XCircle size={20} /> {reviewMode ? t('quiz.exit') : 'Dừng luyện tập'}
+                            </button>
+                            <button
+                                className="control-button primary"
+                                onClick={handleNext}
+                            >
+                                {currentIndex === questions.length - 1
+                                    ? (reviewMode ? t('quiz.exit') : t('quiz.finish'))
+                                    : t('quiz.next')}
+                                {currentIndex < questions.length - 1 && <ArrowRight size={20} />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {!isScrollMode && !showResultModal && (
+                <div style={{ height: '56px' }} />
+            )}
+
+            {isScrollMode && !reviewMode && !showResultModal && (
+                <div className="action-bar">
+                    <div className="action-bar-content">
+                        <div className="action-group">
+                            <span className="score-counter">
+                                {t('quiz.score')}: {Object.values(answers).filter(a => a.isCorrect).length}
+                            </span>
+                        </div>
+                        <div className="action-group">
+                            <button className="action-button primary" onClick={finishQuiz}>{t('quiz.finish')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Result Modal */}
             {showResultModal && (

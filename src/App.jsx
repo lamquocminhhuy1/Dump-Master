@@ -14,9 +14,9 @@ import Results from './components/Results';
 import { BookOpen, LayoutDashboard, History, LogOut, Shield, Sun, Moon, User, Settings, Edit } from 'lucide-react';
 import GroupsPage from './pages/GroupsPage';
  
-import { api } from './utils/api';
+import { api, API_HOST } from './utils/api';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+ 
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -427,7 +427,7 @@ const Navigation = () => {
           >
             {user.avatar ? (
               <img
-                src={`${API_URL}${user.avatar}`}
+                src={`${API_HOST}${user.avatar}`}
                 alt="Avatar"
                 style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }}
               />
@@ -493,6 +493,11 @@ function AppContent() {
             </ProtectedRoute>
           } />
           <Route path="/dump/:id/edit" element={
+            <ProtectedRoute>
+              <DumpEditor />
+            </ProtectedRoute>
+          } />
+          <Route path="/dump/new" element={
             <ProtectedRoute>
               <DumpEditor />
             </ProtectedRoute>

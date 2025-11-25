@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../utils/api';
+import { api, API_HOST } from '../utils/api';
 import { User, Upload, Save, AlertCircle, Mail, MapPin, Lock, Eye, EyeOff, Shield, CheckCircle } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+ 
 
 const ProfilePage = () => {
     const { user, updateUser, checkUser } = useAuth();
@@ -15,7 +15,7 @@ const ProfilePage = () => {
     const [displayName, setDisplayName] = useState(user?.displayName || '');
     const [location, setLocation] = useState(user?.location || '');
     const [avatar, setAvatar] = useState(null);
-    const [preview, setPreview] = useState(user?.avatar ? `${API_URL}${user.avatar}` : null);
+    const [preview, setPreview] = useState(user?.avatar ? `${API_HOST}${user.avatar}` : null);
     
     // Password fields
     
@@ -30,7 +30,7 @@ const ProfilePage = () => {
             setEmail(user.email || '');
             setDisplayName(user.displayName || '');
             setLocation(user.location || '');
-            setPreview(user.avatar ? `${API_URL}${user.avatar}` : null);
+            setPreview(user.avatar ? `${API_HOST}${user.avatar}` : null);
         }
     }, [user]);
 

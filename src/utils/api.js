@@ -1,6 +1,7 @@
 const isViteDev = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV);
 const isLocalHost = (typeof window !== 'undefined' && window.location && (/^(localhost|127\.0\.0\.1)$/).test(window.location.hostname));
-const API_URL = (isViteDev || isLocalHost) ? 'http://localhost:3000/api' : '/api';
+export const API_URL = (isViteDev || isLocalHost) ? 'http://localhost:3000/api' : '/api';
+export const API_HOST = API_URL.replace(/\/api$/, '');
 
 const getHeaders = () => {
     const token = localStorage.getItem('token');
@@ -60,22 +61,40 @@ export const api = {
         return data;
     },
 
-    saveDump: async (name, questions, isPublic, timeLimit, showAnswerImmediately, category) => {
+    saveDump: async (name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage = '') => {
         const res = await fetch(`${API_URL}/dumps`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ name, questions, isPublic, timeLimit, showAnswerImmediately, category })
+            body: JSON.stringify({ name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         return data;
     },
 
-  updateDump: async (id, name, questions, isPublic, timeLimit, showAnswerImmediately, category) => {
+    uploadImage: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/uploads/image`, {
+            method: 'POST',
+            headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+            body: formData
+        });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch {
+            throw new Error(text || `Upload failed (HTTP ${res.status})`);
+        }
+        if (!res.ok) throw new Error(data.error || `Upload failed (HTTP ${res.status})`);
+        return data;
+    },
+
+  updateDump: async (id, name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage = '') => {
         const res = await fetch(`${API_URL}/dumps/${id}`, {
             method: 'PUT',
             headers: getHeaders(),
-            body: JSON.stringify({ name, questions, isPublic, timeLimit, showAnswerImmediately, category })
+            body: JSON.stringify({ name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);

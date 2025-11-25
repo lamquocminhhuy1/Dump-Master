@@ -19,6 +19,7 @@ const GroupsPage = () => {
   const [members, setMembers] = useState([]);
   const [newRole, setNewRole] = useState({ name: '', canCreate: false, canRead: true, canUpdate: false, canDelete: false });
   const [activeTab, setActiveTab] = useState('overview');
+  const [groupActive, setGroupActive] = useState(true);
   const [groupSearch, setGroupSearch] = useState('');
   const { t } = useI18n();
 
@@ -26,6 +27,7 @@ const GroupsPage = () => {
     if (showManageModal && activeTab === 'overview' && selectedGroup) {
       setName(selectedGroup.name || '');
       setDescription(selectedGroup.description || '');
+      setGroupActive(selectedGroup.isActive !== false);
     }
   }, [showManageModal, activeTab, selectedGroup]);
 
@@ -83,26 +85,61 @@ const GroupsPage = () => {
     if (!name) { setMessage(t('groups.nameRequired')); return; }
     try {
       await api.updateGroup(selectedGroup.id, name, description);
-      setShowEditModal(false);
+      setSelectedGroup(prev => prev ? { ...prev, name, description } : prev);
+      setGroups(prev => ({
+        owned: prev.owned.map(g => g.id === selectedGroup.id ? { ...g, name, description } : g),
+        member: prev.member.map(g => g.id === selectedGroup.id ? { ...g, name, description } : g)
+      }));
+      setList(prev => prev.map(item => item.id === selectedGroup.id ? { ...item, name, description } : item));
+      setMessage(t('admin.common.update'));
+      setShowManageModal(false);
       await load();
     } catch (e) {
       setMessage(e.message);
     }
   };
 
-  const handleInvite = async () => {
+  const handleToggleActive = async (next) => {
     if (!selectedGroup) return;
     try {
-      const res = await api.inviteToGroup(selectedGroup.id, inviteUser || '');
+      await api.updateGroupActive(selectedGroup.id, next);
+      setGroupActive(next);
+      setSelectedGroup(prev => prev ? { ...prev, isActive: next } : prev);
+      setGroups(prev => ({
+        owned: prev.owned.map(g => g.id === selectedGroup.id ? { ...g, isActive: next } : g),
+        member: prev.member.map(g => g.id === selectedGroup.id ? { ...g, isActive: next } : g)
+      }));
+      setList(prev => prev.map(item => item.id === selectedGroup.id ? { ...item, isActive: next } : item));
+      setMessage('');
+    } catch (e) {
+      setMessage(e.message);
+    }
+  };
+
+  const handleInviteUser = async () => {
+    if (!selectedGroup) return;
+    if (!inviteUser || !inviteUser.trim()) { setMessage((t('groups.usernameRequired')||'')); return; }
+    try {
+      const res = await api.inviteToGroup(selectedGroup.id, inviteUser.trim());
+      setMessage(res.message || t('groups.userAddedToGroup'));
+      setInviteUser('');
+    } catch (e) {
+      setMessage(e.message);
+    }
+  };
+
+  const handleGenerateInviteLink = async () => {
+    if (!selectedGroup) return;
+    try {
+      const res = await api.inviteToGroup(selectedGroup.id, '');
       const token = res.token;
       if (token) {
         const link = `${window.location.origin}/invite/${token}`;
         setInviteLink(link);
         setMessage(t('groups.inviteLinkGenerated'));
       } else {
-        setMessage(res.message || t('groups.userAddedToGroup'));
+        setMessage(res.message || t('groups.inviteLinkGenerated'));
       }
-      setInviteUser('');
     } catch (e) {
       setMessage(e.message);
     }
@@ -146,6 +183,15 @@ const GroupsPage = () => {
     }
   };
 
+  const handleRemoveMember = async (memberId) => {
+    try {
+      await api.removeGroupMember(selectedGroup.id, memberId);
+      setMembers(prev => prev.filter(m => m.User.id !== memberId));
+    } catch (e) {
+      setMessage(e.message);
+    }
+  };
+
   const filteredOwned = groups.owned.filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()));
   const filteredMember = groups.member.filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()));
   const filteredList = list.filter(g => {
@@ -165,7 +211,7 @@ const GroupsPage = () => {
   const pageRows = filteredList.slice(startIndex, endIndex);
 
   return (
-    <div className="content-wrapper">
+    <div className="content-wrapper" style={{ maxWidth: '1400px', padding: 0 }}>
       <div className="section-header" style={{ marginTop: '1.5rem' }}>
         <div className="section-title"><Users size={20}/> {t('groups.title')}</div>
         <div className="input-wrapper" style={{ width: '320px' }}>
@@ -176,8 +222,8 @@ const GroupsPage = () => {
 
       {message && <div className="error-message" style={{ margin: '0 2rem 1rem' }}>{message}</div>}
 
-      <div className="groups-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
-        <aside className="dump-card" style={{ padding: '1rem' }}>
+      <div className="groups-layout" style={{ display: 'grid', gridTemplateColumns: '320px minmax(900px, 1fr)', gap: '1.25rem', alignItems: 'start' }}>
+        <aside className="dump-card" style={{ padding: '1.25rem', position: 'sticky', top: '2rem', maxHeight: 'calc(100vh - 4rem)', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ fontSize: '1rem' }}>{t('groups.yourGroups')}</h3>
             <button
@@ -191,10 +237,10 @@ const GroupsPage = () => {
           <ul style={{ marginTop: '1rem' }}>
             {filteredOwned.map(g => (
               <li key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
-                <button className="btn-text" onClick={() => { setSelectedGroup(g); setActiveTab('overview'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button className="btn-text" onClick={() => { setSelectedGroup({ ...g, type: 'owned' }); setActiveTab('overview'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Shield size={16}/> {g.name}
                 </button>
-                <button className="control-button secondary" onClick={() => { setSelectedGroup(g); setActiveTab('members'); setShowManageModal(true); }}>{t('groups.manage')}</button>
+                <button className="control-button secondary" onClick={() => { setSelectedGroup({ ...g, type: 'owned' }); setActiveTab('overview'); setShowManageModal(true); }}>{t('groups.manage')}</button>
               </li>
             ))}
             {filteredOwned.length === 0 && (
@@ -213,7 +259,7 @@ const GroupsPage = () => {
           {/* Removed duplicate create group section to avoid two CTAs */}
         </aside>
 
-        <main className="dump-card" style={{ padding: '1.5rem' }}>
+        <main className="dump-card" style={{ padding: '2rem', minHeight: 'calc(100vh - 4rem)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <button className="tab-button active">{t('groups.all')}</button>
@@ -236,37 +282,33 @@ const GroupsPage = () => {
                   <th>{t('groups.table.owner')}</th>
                   <th>{t('groups.table.members')}</th>
                   <th>{t('groups.table.updated')}</th>
+                  <th>{t('admin.groups.status')}</th>
                   <th>{t('groups.table.type')}</th>
                   <th>{t('groups.table.actions')}</th>
                 </tr>
-                <tr className="filter-row">
-                  <th><input type="text" placeholder={t('groups.table.search')} value={groupSearch} onChange={e => { setGroupSearch(e.target.value); setPage(1); }} /></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                </tr>
+                
               </thead>
               <tbody>
                 {pageRows.map(g => (
                   <tr key={g.id}>
                     <td>
-                      <button className="btn-text" onClick={() => { setSelectedGroup({ id: g.id, name: g.name }); setActiveTab('overview'); }}>{g.name}</button>
+                      <button className="btn-text" onClick={() => { setSelectedGroup(g); setActiveTab('overview'); }}>{g.name}</button>
                     </td>
                     <td>{g.description || ''}</td>
                     <td>{g.owner || ''}</td>
                     <td>{g.memberCount}</td>
                     <td>{new Date(g.updatedAt).toLocaleString()}</td>
+                    <td style={{ color: g.isActive ? 'var(--sn-green)' : '#ef4444', fontWeight: 600 }}>
+                      {g.isActive ? t('admin.groups.active') : t('admin.groups.inactive')}
+                    </td>
                     <td>{g.type}</td>
                     <td>
-                      <button className="control-button secondary" onClick={() => { setSelectedGroup({ id: g.id, name: g.name }); setActiveTab('members'); setShowManageModal(true); }}>{t('groups.manage')}</button>
+                      <button className="control-button secondary" onClick={() => { setSelectedGroup(g); setActiveTab('overview'); setShowManageModal(true); }}>{t('groups.manage')}</button>
                     </td>
                   </tr>
                 ))}
                 {pageRows.length === 0 && (
-                  <tr><td colSpan={7} style={{ color: 'var(--text-secondary)' }}>{t('groups.table.noGroupsFound')}</td></tr>
+                  <tr><td colSpan={8} style={{ color: 'var(--text-secondary)' }}>{t('groups.table.noGroupsFound')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -325,20 +367,50 @@ const GroupsPage = () => {
       {showManageModal && selectedGroup && (
         <div className="modal-overlay manage-modal" onClick={() => setShowManageModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="icon-btn" aria-label={t('common.close')} onClick={() => setShowManageModal(false)} style={{ position: 'absolute', right: '0.75rem', top: '0.75rem' }}>✕</button>
             <div className="section-header" style={{ marginBottom: '1rem' }}>
               <div className="section-title" style={{ fontSize: '1.25rem' }}><Shield size={18}/> {selectedGroup.name}</div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>{t('groups.tabs.overview')}</button>
-                <button className={`tab-button ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>{t('groups.tabs.members')}</button>
-                <button className={`tab-button ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>{t('groups.tabs.roles')}</button>
-                <button className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>{t('groups.tabs.settings')}</button>
-              </div>
             </div>
-            <div className="manage-modal-body">
+            <div className="manage-modal-body" style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '1rem' }}>
+              <aside className="dump-card" style={{ padding: '0.5rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <button className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>{t('groups.tabs.overview')}</button>
+                  <button className={`tab-button ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>{t('groups.tabs.members')}</button>
+                  <button className={`tab-button ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>{t('groups.tabs.roles')}</button>
+                  <button className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>{t('groups.tabs.settings')}</button>
+                </div>
+              </aside>
+              <section>
             {activeTab === 'overview' && (
               <div>
                 <div style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>{t('groups.overviewHelp')}</div>
                 <div className="dump-card" style={{ padding: '1rem' }}>
+                  <div className="form-group">
+                    <label>{t('admin.manageGroup.status')}</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, color: groupActive ? 'var(--sn-green)' : '#ef4444' }}>
+                        {groupActive ? t('admin.groups.active') : t('admin.groups.inactive')}
+                      </span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={groupActive}
+                          onChange={(e) => handleToggleActive(e.target.checked)}
+                        />
+                        <span>{groupActive ? t('admin.manageGroup.setInactive') : t('admin.manageGroup.setActive')}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>{t('groups.table.owner')}</label>
+                    <div className="input-wrapper">
+                      <User size={18} style={{ color: 'var(--text-secondary)' }} />
+                      <input type="text" value={selectedGroup?.owner || ''} readOnly />
+                    </div>
+                  </div>
+                  {message && (
+                    <div style={{ color: message.includes('Cập nhật') ? 'var(--sn-green)' : '#ef4444', marginBottom: '0.5rem' }}>{message}</div>
+                  )}
                   <div className="form-group">
                     <label>{t('common.name')}</label>
                     <input type="text" value={name} onChange={e => setName(e.target.value)} />
@@ -347,10 +419,7 @@ const GroupsPage = () => {
                     <label>{t('common.description')}</label>
                     <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
                   </div>
-                  <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className="control-button secondary" onClick={() => { setName(selectedGroup.name || ''); setDescription(selectedGroup.description || ''); }}>{t('admin.common.cancel')}</button>
-                    <button className="control-button primary" onClick={handleEdit}>{t('admin.common.update')}</button>
-                  </div>
+                  
                 </div>
               </div>
             )}
@@ -364,7 +433,8 @@ const GroupsPage = () => {
                       <User size={18} style={{ color: 'var(--text-secondary)' }} />
                       <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} placeholder={t('groups.optionalUsername')} />
                     </div>
-                    <button className="control-button primary" onClick={handleInvite}><Send size={16}/> {t('groups.generateLink')}</button>
+                    <button className="control-button secondary" onClick={handleInviteUser}>{t('groups.inviteUser') || 'Invite User'}</button>
+                    <button className="control-button primary" onClick={handleGenerateInviteLink}><Send size={16}/> {t('groups.generateLink')}</button>
                   </div>
                   {inviteLink && (
                     <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -376,17 +446,22 @@ const GroupsPage = () => {
 
                 <h3 style={{ marginTop: '1rem' }}>{t('groups.tabs.members')}</h3>
                 <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '0.5rem', paddingTop: '0.5rem' }}>
-                  {members.map(m => (
-                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><User size={16}/> {m.User.username}</span>
-                       <select value={m.GroupRole?.id || m.GroupRoleId || ''} onChange={(e) => handleMemberRoleChange(m.User.id, e.target.value)}>
-                         <option value="">{t('groups.role.noRole')}</option>
-                         {roles.map(r => (
-                           <option key={r.id} value={r.id}>{r.name}</option>
-                         ))}
-                       </select>
+                {members.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', gap: '0.5rem' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><User size={16}/> {m.User.username}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <select value={m.GroupRole?.id || m.GroupRoleId || ''} onChange={(e) => handleMemberRoleChange(m.User.id, e.target.value)}>
+                        <option value="">{t('groups.role.noRole')}</option>
+                        {roles.map(r => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                      {(selectedGroup?.type === 'owned') && (
+                        <button className="icon-btn delete" onClick={() => handleRemoveMember(m.User.id)}>{t('admin.action.delete')}</button>
+                      )}
                     </div>
-                  ))}
+                  </div>
+                ))}
                   {members.length === 0 && (
                     <div style={{ color: 'var(--text-secondary)' }}>{t('groups.noMembersYet')}</div>
                   )}
@@ -436,6 +511,13 @@ const GroupsPage = () => {
             {activeTab === 'settings' && (
               <div style={{ color: 'var(--text-secondary)' }}>{t('groups.settings.placeholder') || ''}</div>
             )}
+            {activeTab === 'overview' && (
+              <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)', padding: '0.75rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <button className="control-button secondary" onClick={() => { setName(selectedGroup.name || ''); setDescription(selectedGroup.description || ''); setShowManageModal(false); }}>{t('admin.common.cancel')}</button>
+                <button className="control-button primary" onClick={handleEdit}>{t('admin.common.update')}</button>
+              </div>
+            )}
+              </section>
             </div>
           </div>
         </div>

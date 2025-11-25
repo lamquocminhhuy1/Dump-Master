@@ -39,7 +39,16 @@ const AdminPage = () => {
     const [historyDate, setHistoryDate] = useState('');
 
     const navigate = useNavigate();
-    const { t } = useI18n();
+    const { t, lang } = useI18n();
+    const formatDateTime = (d) => {
+        const date = new Date(d);
+        if (lang === 'vi') {
+            const ds = date.toLocaleDateString('vi-VN');
+            const ts = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            return `${ds} ${ts}`;
+        }
+        return date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    };
 
     useEffect(() => {
         loadData();
@@ -398,7 +407,7 @@ const AdminPage = () => {
                                             <td>{user.dumpCount}</td>
                                             <td>{user.quizCount}</td>
                                             <td>{user.avgScore}%</td>
-                                            <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                                            <td>{formatDateTime(user.createdAt)}</td>
                                             <td>
                                                 <button
                                                     className="icon-btn delete"
@@ -517,7 +526,7 @@ const AdminPage = () => {
                                             <td>{dump.User?.username || 'Unknown'}</td>
                                             <td>{dump.questions.length}</td>
                                             <td>{dump.isPublic ? t('admin.common.yes') : t('admin.common.no')}</td>
-                                            <td>{new Date(dump.createdAt).toLocaleDateString()}</td>
+                                            <td>{formatDateTime(dump.createdAt)}</td>
                                             <td>
                                                 <button
                                                     className="icon-btn"

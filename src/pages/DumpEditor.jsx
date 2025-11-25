@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../context/I18nContext';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { Save, ArrowLeft, Trash2, Globe, Lock, Clock, FileText, Plus, X, Check, Download, Upload, MoreVertical } from 'lucide-react';
+import HtmlEditor from '../components/HtmlEditor';
 
 const DumpEditor = () => {
     const { id } = useParams();
@@ -17,6 +18,9 @@ const DumpEditor = () => {
     const [timeLimit, setTimeLimit] = useState(dump?.timeLimit || 0);
     const [showAnswerImmediately, setShowAnswerImmediately] = useState(dump?.showAnswerImmediately !== undefined ? dump.showAnswerImmediately : true);
     const [category, setCategory] = useState(dump?.category || 'Uncategorized');
+    const [coverImage, setCoverImage] = useState(dump?.coverImage || '');
+    const [coverUploading, setCoverUploading] = useState(false);
+    const coverFileInputRef = useRef(null);
     const [questions, setQuestions] = useState(dump?.questions || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -30,10 +34,19 @@ const DumpEditor = () => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingIndex, setEditingIndex] = useState(-1);
     const [newQuestion, setNewQuestion] = useState({
+        type: 'multiple_choice_single',
         question: '',
         options: { A: '', B: '', C: '', D: '' },
-        correctAnswer: 'A'
+        correctAnswer: 'A',
+        correctAnswers: [],
+        acceptedAnswers: [],
+        isHtml: false
     });
+    const [dragIndex, setDragIndex] = useState(-1);
+    const [dragImport, setDragImport] = useState(false);
+    const [dragType, setDragType] = useState(null);
+    const [hoverIndex, setHoverIndex] = useState(-1);
+    const [leftTab, setLeftTab] = useState('settings');
 
     // Import/Export state
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -49,6 +62,7 @@ const DumpEditor = () => {
             setTimeLimit(dump.timeLimit);
             setShowAnswerImmediately(dump.showAnswerImmediately !== undefined ? dump.showAnswerImmediately : true);
             setCategory(dump.category || 'Uncategorized');
+            setCoverImage(dump.coverImage || '');
             setQuestions(dump.questions);
         }
         (async () => {
@@ -73,6 +87,7 @@ const DumpEditor = () => {
                 setTimeLimit(found.timeLimit);
                 setShowAnswerImmediately(found.showAnswerImmediately !== undefined ? found.showAnswerImmediately : true);
                 setCategory(found.category || 'Uncategorized');
+                setCoverImage(found.coverImage || '');
                 setQuestions(found.questions || []);
                 setError('');
             } else {
@@ -90,6 +105,7 @@ const DumpEditor = () => {
                     setTimeLimit(found.timeLimit);
                     setShowAnswerImmediately(found.showAnswerImmediately !== undefined ? found.showAnswerImmediately : true);
                     setCategory(found.category || 'Uncategorized');
+                    setCoverImage(found.coverImage || '');
                     setQuestions(found.questions || []);
                     setError('');
                 } else {
@@ -113,10 +129,9 @@ const DumpEditor = () => {
         setError('');
         try {
             if (isEditMode) {
-                await api.updateDump(id, name, questions, isPublic, timeLimit, showAnswerImmediately, category);
+                await api.updateDump(id, name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage);
             } else {
-                // Assuming a saveDump function exists for creating new dumps
-                await api.saveDump(name, questions, isPublic, timeLimit, showAnswerImmediately, category);
+                await api.saveDump(name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage);
             }
             navigate('/');
         } catch (err) {
@@ -151,6 +166,11 @@ const DumpEditor = () => {
     const handleImportFile = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        await processImportFile(file);
+    };
+
+    const processImportFile = async (file) => {
+        if (!file) return;
         if (!isEditMode) {
             alert('Please save the dump first before importing');
             return;
@@ -159,21 +179,16 @@ const DumpEditor = () => {
             alert(t('errors.invalidDumpId'));
             return;
         }
-
         setImportFile(file);
         setLoading(true);
-        setError(''); // Clear any previous errors
+        setError('');
         try {
             const result = await api.importDump(id, file);
-
             if (result.status === 'duplicates_found') {
-                // Show duplicate modal
                 setDuplicateData(result);
                 setShowDuplicateModal(true);
             } else if (result.status === 'success') {
-                // Import successful, reload dump to get updated questions
                 await loadDump();
-                // Show success message
                 alert(result.message || `Import completed. Total questions: ${result.totalQuestions || questions.length}`);
             } else {
                 alert('Import completed with status: ' + (result.status || 'unknown'));
@@ -183,12 +198,8 @@ const DumpEditor = () => {
             const errorMsg = err.message || 'Import failed';
             alert('Import failed: ' + errorMsg);
             setError(errorMsg);
-            // Don't clear dump state on error, allow user to retry
         } finally {
             setLoading(false);
-            if (e && e.target) {
-                e.target.value = ''; // Reset file input
-            }
         }
     };
 
@@ -237,32 +248,107 @@ const DumpEditor = () => {
         const corrects = Array.isArray(q.correctAnswers)
             ? q.correctAnswers
             : (q.correctAnswer ? [q.correctAnswer] : []);
-        setNewQuestion({ ...q, correctAnswers: corrects });
+        let baseType = q.type || (corrects.length > 1 ? 'multiple_choice_multiple' : 'multiple_choice_single');
+        if (q.type === 'html_field') {
+            baseType = 'html_field';
+        } else if (!q.options || Object.keys(q.options || {}).length === 0 || q.acceptedAnswers) {
+            baseType = 'short_answer';
+        } else if ((q.options?.A === 'True' && q.options?.B === 'False') || (q.options?.A === 'Đúng' && q.options?.B === 'Sai')) {
+            baseType = 'true_false';
+        }
+        let normalizedOptions = q.options;
+        if (baseType === 'short_answer' || baseType === 'html_field') {
+            normalizedOptions = {};
+        } else if (baseType === 'true_false') {
+            normalizedOptions = { A: 'True', B: 'False' };
+        } else {
+            normalizedOptions = {
+                A: q.options?.A ?? '',
+                B: q.options?.B ?? '',
+                C: q.options?.C ?? '',
+                D: q.options?.D ?? ''
+            };
+        }
+        setNewQuestion({ type: baseType, ...q, options: normalizedOptions, correctAnswers: corrects, acceptedAnswers: q.acceptedAnswers || [], isHtml: !!q.isHtml });
         setShowAddModal(true);
     };
 
     const handleSaveQuestion = () => {
-        if (!newQuestion.question || !newQuestion.options.A || !newQuestion.options.B) {
-            alert('Please fill in the question and at least options A and B.');
+        if (!newQuestion.question) {
+            alert('Please fill in the question.');
             return;
         }
-        const selectedCorrects = Array.isArray(newQuestion.correctAnswers) ? newQuestion.correctAnswers : (newQuestion.correctAnswer ? [newQuestion.correctAnswer] : []);
-        if (selectedCorrects.length === 0) {
-            alert('Please select at least one correct answer.');
-            return;
+        const toSave = { ...newQuestion };
+        const selectedCorrects = Array.isArray(newQuestion.correctAnswers)
+            ? newQuestion.correctAnswers
+            : (newQuestion.correctAnswer ? [newQuestion.correctAnswer] : []);
+
+        if (newQuestion.type === 'short_answer') {
+            toSave.options = {};
+            toSave.correctAnswer = undefined;
+            toSave.correctAnswers = undefined;
+            toSave.acceptedAnswers = (newQuestion.acceptedAnswers || [])
+                .map(x => (x || '').trim())
+                .filter(x => x !== '');
+            if (toSave.acceptedAnswers.length === 0) {
+                alert('Please add at least one accepted answer.');
+                return;
+            }
+        } else if (newQuestion.type === 'html_field') {
+            toSave.options = {};
+            toSave.correctAnswer = undefined;
+            toSave.correctAnswers = undefined;
+            toSave.acceptedAnswers = undefined;
+        } else if (newQuestion.type === 'true_false') {
+            toSave.options = { A: 'True', B: 'False' };
+            if (selectedCorrects.length === 0) {
+                alert('Please select the correct answer.');
+                return;
+            }
+            toSave.correctAnswer = selectedCorrects[0] || 'A';
+            toSave.correctAnswers = [toSave.correctAnswer];
+        } else if (newQuestion.type === 'multiple_choice_multiple') {
+            if (!newQuestion.options.A || !newQuestion.options.B) {
+                alert('Please fill at least options A and B.');
+                return;
+            }
+            if (selectedCorrects.length === 0) {
+                alert('Please select at least one correct answer.');
+                return;
+            }
+            toSave.correctAnswers = selectedCorrects;
+            toSave.correctAnswer = selectedCorrects[0];
+        } else {
+            if (!newQuestion.options.A || !newQuestion.options.B) {
+                alert('Please fill at least options A and B.');
+                return;
+            }
+            if (selectedCorrects.length === 0) {
+                alert('Please select the correct answer.');
+                return;
+            }
+            toSave.correctAnswer = selectedCorrects[0];
+            toSave.correctAnswers = [toSave.correctAnswer];
         }
+
+        toSave.isHtml = true;
+
         const updatedQuestions = [...questions];
         if (editingIndex >= 0) {
-            updatedQuestions[editingIndex] = { ...newQuestion, correctAnswers: selectedCorrects, correctAnswer: selectedCorrects[0] };
+            updatedQuestions[editingIndex] = toSave;
         } else {
-            updatedQuestions.push({ ...newQuestion, correctAnswers: selectedCorrects, correctAnswer: selectedCorrects[0] });
+            updatedQuestions.push(toSave);
         }
 
         setQuestions(updatedQuestions);
         setNewQuestion({
+            type: 'multiple_choice_single',
             question: '',
             options: { A: '', B: '', C: '', D: '' },
-            correctAnswers: []
+            correctAnswer: 'A',
+            correctAnswers: [],
+            acceptedAnswers: [],
+            isHtml: false
         });
         setEditingIndex(-1);
         setShowAddModal(false);
@@ -271,9 +357,13 @@ const DumpEditor = () => {
     const openAddModal = () => {
         setEditingIndex(-1);
         setNewQuestion({
+            type: 'multiple_choice_single',
             question: '',
             options: { A: '', B: '', C: '', D: '' },
-            correctAnswers: []
+            correctAnswer: 'A',
+            correctAnswers: [],
+            acceptedAnswers: [],
+            isHtml: false
         });
         setShowAddModal(true);
     };
@@ -340,7 +430,7 @@ const DumpEditor = () => {
                     <button onClick={() => navigate(-1)} className="icon-btn" title="Back">
                         <ArrowLeft size={24} />
                     </button>
-                    <h2>Edit Dump</h2>
+                    <h2>{t('editor.title')}</h2>
                 </div>
             </div>
 
@@ -369,112 +459,190 @@ const DumpEditor = () => {
                 </div>
             )}
 
-            <div className="dump-card" style={{ marginBottom: '2rem', padding: '2rem' }}>
-                <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>Settings</h3>
-                <div className="form-group">
-                    <label>Dump Name</label>
-                    <div className="input-wrapper">
-                        <FileText size={20} style={{ color: 'var(--text-secondary)' }} />
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Enter dump name"
-                        />
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+                <div style={{ width: '320px', minWidth: '320px', boxSizing: 'border-box', flexShrink: 0, position: 'sticky', top: '80px', alignSelf: 'flex-start' }}>
+                <div className="dump-card" style={{ marginBottom: '1rem', padding: '1.25rem', maxHeight: 'calc(100vh - 120px)', overflow: 'auto' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                            <button type="button" className={`tab-button ${leftTab === 'settings' ? 'active' : ''}`} onClick={() => setLeftTab('settings')} style={{ flex: 1 }}>
+                                {t('editor.settings')}
+                            </button>
+                            <button type="button" className={`tab-button ${leftTab === 'types' ? 'active' : ''}`} onClick={() => setLeftTab('types')} style={{ flex: 1 }}>
+                                {t('editor.questionType')}
+                            </button>
+                        </div>
+
+                        {leftTab === 'settings' && (
+                            <div>
+                                <div className="form-group">
+                                    <label>{t('editor.dumpName')}</label>
+                                    <div className="input-wrapper">
+                                        <FileText size={20} style={{ color: 'var(--text-secondary)' }} />
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            placeholder={t('editor.enterDumpName')}
+                                        />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                                    <div className="form-group">
+                                        <label>{t('editor.visibility')}</label>
+                                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                className={`tab-button ${!isPublic ? 'active' : ''}`}
+                                                onClick={() => setIsPublic(false)}
+                                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center' }}
+                                            >
+                                                <Lock size={16} /> {t('editor.private')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`tab-button ${isPublic ? 'active' : ''}`}
+                                                onClick={() => setIsPublic(true)}
+                                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center' }}
+                                            >
+                                                <Globe size={16} /> {t('editor.public')}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label>{t('editor.category')}</label>
+                                        <div className="input-wrapper">
+                                            <FileText size={20} style={{ color: 'var(--text-secondary)' }} />
+                                            <select
+                                                value={category}
+                                                onChange={(e) => setCategory(e.target.value)}
+                                                className="select-input"
+                                            >
+                                                <option value="Uncategorized">{t('filter.uncategorized')}</option>
+                                                <option value="CSA">CSA - Certified System Administrator</option>
+                                                <option value="CIS">CIS - Certified Implementation Specialist</option>
+                                                <option value="CAD">CAD - Certified Application Developer</option>
+                                                <option value="CTA">CTA - Certified Technical Architect</option>
+                                                <option value="CSM">CSM - Customer Service Management</option>
+                                                <option value="ITSM">ITSM - IT Service Management</option>
+                                                <option value="ITOM">ITOM - IT Operations Management</option>
+                                                <option value="SecOps">SecOps - Security Operations</option>
+                                                <option value="HRSD">HRSD - HR Service Delivery</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label>{t('editor.quizMode')}</label>
+                                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                className={`tab-button ${showAnswerImmediately ? 'active' : ''}`}
+                                                onClick={() => setShowAnswerImmediately(true)}
+                                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center', fontSize: '0.9rem' }}
+                                                title={t('editor.practiceHint')}
+                                            >
+                                                {t('editor.practice')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`tab-button ${!showAnswerImmediately ? 'active' : ''}`}
+                                                onClick={() => setShowAnswerImmediately(false)}
+                                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center', fontSize: '0.9rem' }}
+                                                title={t('editor.examHint')}
+                                            >
+                                                {t('editor.exam')}
+                                            </button>
+                                        </div>
+                                        <small style={{ color: 'var(--text-secondary)', marginTop: '8px', display: 'block', lineHeight: '1.5' }}>
+                                            <strong>{t('editor.practice')}:</strong> {t('editor.practiceHint')}<br />
+                                            <strong>{t('editor.exam')}:</strong> {t('editor.examHint')}
+                                        </small>
+                                    </div>
+
+                                <div className="form-group">
+                                    <label>{t('editor.timeLimitMinutes')}</label>
+                                    <div className="input-wrapper">
+                                        <Clock size={20} style={{ color: 'var(--text-secondary)' }} />
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={timeLimit}
+                                            onChange={(e) => setTimeLimit(parseInt(e.target.value) || 0)}
+                                        />
+                                    </div>
+                                    <small style={{ color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>{t('editor.noLimitHint')}</small>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>{t('editor.coverImage')}</label>
+                                    <input
+                                        ref={coverFileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        style={{ display: 'none' }}
+                                        onChange={async (e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            setCoverUploading(true);
+                                            try {
+                                                const result = await api.uploadImage(file);
+                                                const url = result.url.startsWith('/uploads/') ? `http://localhost:3000${result.url}` : result.url;
+                                                setCoverImage(url);
+                                            } catch (err) {
+                                                alert(err.message);
+                                            } finally {
+                                                setCoverUploading(false);
+                                            }
+                                        }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                        <button 
+                                            type="button" 
+                                            className="control-button secondary" 
+                                            onClick={() => coverFileInputRef.current && coverFileInputRef.current.click()} 
+                                            disabled={coverUploading}
+                                        >
+                                            {coverUploading ? t('common.loading') : t('editor.coverImageUpload')}
+                                        </button>
+                                    </div>
+                                    {coverImage && (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                            <img src={coverImage} alt="Cover preview" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                                        </div>
+                                    )}
+                                </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {leftTab === 'types' && (
+                            <div className="form-group">
+                                <label>{t('editor.questionType')}</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                    <button type="button" className="tab-button" style={{ justifyContent: 'flex-start', fontSize: '0.85rem' }} draggable onDragStart={() => { setDragType('multiple_choice_single'); setHoverIndex(-1); }} onDragEnd={() => setDragType(null)}>
+                                        {t('editor.types.multipleSingle')}
+                                    </button>
+                                    <button type="button" className="tab-button" style={{ justifyContent: 'flex-start', fontSize: '0.85rem' }} draggable onDragStart={() => { setDragType('multiple_choice_multiple'); setHoverIndex(-1); }} onDragEnd={() => setDragType(null)}>
+                                        {t('editor.types.multipleMultiple')}
+                                    </button>
+                                    <button type="button" className="tab-button" style={{ justifyContent: 'flex-start', fontSize: '0.85rem' }} draggable onDragStart={() => { setDragType('true_false'); setHoverIndex(-1); }} onDragEnd={() => setDragType(null)}>
+                                        {t('editor.types.trueFalse')}
+                                    </button>
+                                    <button type="button" className="tab-button" style={{ justifyContent: 'flex-start', fontSize: '0.85rem' }} draggable onDragStart={() => { setDragType('short_answer'); setHoverIndex(-1); }} onDragEnd={() => setDragType(null)}>
+                                        {t('editor.types.shortAnswer')}
+                                    </button>
+                                    <button type="button" className="tab-button" style={{ justifyContent: 'flex-start', fontSize: '0.85rem' }} draggable onDragStart={() => { setDragType('html_field'); setHoverIndex(-1); }} onDragEnd={() => setDragType(null)}>
+                                        {t('editor.types.htmlField')}
+                                    </button>
+                                    <small style={{ color: 'var(--text-secondary)' }}>{t('editor.addQuestion')}</small>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '2rem' }}>
-                    <div className="form-group">
-                        <label>Visibility</label>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                            <button
-                                type="button"
-                                className={`tab-button ${!isPublic ? 'active' : ''}`}
-                                onClick={() => setIsPublic(false)}
-                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center' }}
-                            >
-                                <Lock size={16} /> Private
-                            </button>
-                            <button
-                                type="button"
-                                className={`tab-button ${isPublic ? 'active' : ''}`}
-                                onClick={() => setIsPublic(true)}
-                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center' }}
-                            >
-                                <Globe size={16} /> Public
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="form-group">
-                        <label>Category</label>
-                        <div className="input-wrapper">
-                            <FileText size={20} style={{ color: 'var(--text-secondary)' }} />
-                            <select
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className="select-input"
-                            >
-                                <option value="Uncategorized">Uncategorized</option>
-                                <option value="CSA">CSA - Certified System Administrator</option>
-                                <option value="CIS">CIS - Certified Implementation Specialist</option>
-                                <option value="CAD">CAD - Certified Application Developer</option>
-                                <option value="CTA">CTA - Certified Technical Architect</option>
-                                <option value="CSM">CSM - Customer Service Management</option>
-                                <option value="ITSM">ITSM - IT Service Management</option>
-                                <option value="ITOM">ITOM - IT Operations Management</option>
-                                <option value="SecOps">SecOps - Security Operations</option>
-                                <option value="HRSD">HRSD - HR Service Delivery</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="form-group">
-                        <label>Quiz Mode</label>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                            <button
-                                type="button"
-                                className={`tab-button ${showAnswerImmediately ? 'active' : ''}`}
-                                onClick={() => setShowAnswerImmediately(true)}
-                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center', fontSize: '0.9rem' }}
-                                title="Show answers immediately after each question"
-                            >
-                                Practice
-                            </button>
-                            <button
-                                type="button"
-                                className={`tab-button ${!showAnswerImmediately ? 'active' : ''}`}
-                                onClick={() => setShowAnswerImmediately(false)}
-                                style={{ border: '1px solid var(--border-color)', flex: 1, justifyContent: 'center', fontSize: '0.9rem' }}
-                                title="Show answers only at the end of the quiz"
-                            >
-                                Exam
-                            </button>
-                        </div>
-                        <small style={{ color: 'var(--text-secondary)', marginTop: '8px', display: 'block', lineHeight: '1.5' }}>
-                            <strong>Practice:</strong> See correct answers immediately after each question.<br />
-                            <strong>Exam:</strong> Complete all questions first, then review answers at the end.
-                        </small>
-                    </div>
-
-                    <div className="form-group">
-                        <label>Time Limit (Minutes)</label>
-                        <div className="input-wrapper">
-                            <Clock size={20} style={{ color: 'var(--text-secondary)' }} />
-                            <input
-                                type="number"
-                                min="0"
-                                value={timeLimit}
-                                onChange={(e) => setTimeLimit(parseInt(e.target.value) || 0)}
-                            />
-                        </div>
-                        <small style={{ color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>Set to 0 for no limit</small>
-                    </div>
-                </div>
-            </div>
-
+                <div style={{ flex: 1 }}>
             <div className="questions-section">
                 <div className="section-header">
                     <h3>{t('editor.questions')} ({questions.length})</h3>
@@ -483,56 +651,164 @@ const DumpEditor = () => {
                     </button>
                 </div>
 
-                <div className="list-grid">
+                <div 
+                    className="list-grid"
+                    onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={() => {
+                            if (dragType) {
+                                let created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswer: 'A', correctAnswers: [], acceptedAnswers: [] };
+                                if (dragType === 'true_false') {
+                                    created = { type: dragType, question: '', options: { A: 'True', B: 'False' }, correctAnswer: 'A', correctAnswers: [] };
+                                } else if (dragType === 'short_answer') {
+                                    created = { type: dragType, question: '', options: {}, acceptedAnswers: [], correctAnswer: undefined, correctAnswers: undefined };
+                                } else if (dragType === 'html_field') {
+                                    created = { type: dragType, question: '', options: {}, correctAnswer: undefined, correctAnswers: undefined, acceptedAnswers: undefined };
+                                } else if (dragType === 'multiple_choice_multiple') {
+                                    created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswers: [], correctAnswer: 'A', acceptedAnswers: [] };
+                                }
+                                const arr = [...questions];
+                                arr.push(created);
+                            setQuestions(arr);
+                            setDragType(null);
+                            setHoverIndex(-1);
+                            return;
+                        }
+                        if (dragIndex !== -1) {
+                            const arr = [...questions];
+                            const [moved] = arr.splice(dragIndex, 1);
+                            arr.push(moved);
+                            setQuestions(arr);
+                            setDragIndex(-1);
+                            setHoverIndex(-1);
+                        }
+                    }}
+                >
                     {questions.map((q, idx) => (
-                        <div key={idx} className="dump-card" style={{ padding: '1.5rem', flexDirection: 'row', alignItems: 'flex-start', gap: '1rem' }}>
+                        <div
+                            key={idx}
+                            className="dump-card"
+                            style={{ padding: '1.25rem', flexDirection: 'row', alignItems: 'flex-start', gap: '0.75rem', border: (dragIndex === idx || hoverIndex === idx) ? '2px dashed var(--primary-color)' : '1px solid var(--border-color)' }}
+                            draggable
+                            onDragStart={() => setDragIndex(idx)}
+                            onDragOver={(e) => { e.preventDefault(); setHoverIndex(idx); }}
+                            onDrop={() => {
+                                if (dragType) {
+                                    let created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswer: 'A', correctAnswers: [], acceptedAnswers: [] };
+                                    if (dragType === 'true_false') {
+                                        created = { type: dragType, question: '', options: { A: 'True', B: 'False' }, correctAnswer: 'A', correctAnswers: [] };
+                                    } else if (dragType === 'short_answer') {
+                                        created = { type: dragType, question: '', options: {}, acceptedAnswers: [], correctAnswer: undefined, correctAnswers: undefined };
+                                    } else if (dragType === 'html_field') {
+                                        created = { type: dragType, question: '', options: {}, correctAnswer: undefined, correctAnswers: undefined, acceptedAnswers: undefined };
+                                    } else if (dragType === 'multiple_choice_multiple') {
+                                        created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswers: [], correctAnswer: 'A', acceptedAnswers: [] };
+                                    }
+                                    const arr = [...questions];
+                                    arr.splice(idx, 0, created);
+                                    setQuestions(arr);
+                                    setDragType(null);
+                                    setHoverIndex(-1);
+                                    return;
+                                }
+                                if (dragIndex === -1 || dragIndex === idx) { setHoverIndex(-1); return; }
+                                const arr = [...questions];
+                                const [moved] = arr.splice(dragIndex, 1);
+                                arr.splice(idx, 0, moved);
+                                setQuestions(arr);
+                                setDragIndex(-1);
+                                setHoverIndex(-1);
+                            }}
+                            onDragLeave={() => setHoverIndex(-1)}
+                            onDragEnd={() => { setDragIndex(-1); setDragType(null); setHoverIndex(-1); }}
+                        >
                             <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => handleEditQuestion(idx)}>
-                                <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '1.05rem' }}>
+                                <div style={{ fontWeight: '600', marginBottom: '0.25rem', fontSize: '1.02rem' }}>
                                     <span style={{ color: 'var(--primary-color)', marginRight: '8px' }}>Q{idx + 1}:</span>
-                                    {q.question}
+                                    {q.isHtml || /<[^>]+>/.test(q.question || '') ? (
+                                        <span style={{ display: 'inline' }} dangerouslySetInnerHTML={{ __html: q.question }} />
+                                    ) : (
+                                        <span>{q.question}</span>
+                                    )}
                                 </div>
-                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                                    <span style={{ fontWeight: '500', color: 'var(--sn-green)' }}>Answer: {(Array.isArray(q.correctAnswers) ? q.correctAnswers.join(',') : q.correctAnswer || '-')}</span>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                    <span style={{ fontWeight: '500', color: 'var(--sn-green)' }}>{t('editor.answerLabel')}: {(Array.isArray(q.correctAnswers) ? q.correctAnswers.join(',') : q.correctAnswer || '-')}</span>
                                     <span style={{ margin: '0 8px' }}>•</span>
-                                    <span>{Object.keys(q.options).filter(k => q.options[k]).length} Options</span>
+                                    <span>{t('editor.optionsCount', { count: Object.keys(q.options).filter(k => q.options[k]).length })}</span>
                                 </div>
                             </div>
                             <button
                                 className="icon-btn delete"
                                 onClick={(e) => { e.stopPropagation(); handleDeleteQuestion(idx); }}
-                                title="Delete Question"
+                                title={t('editor.deleteQuestion')}
                             >
-                                <Trash2 size={18} />
+                                <Trash2 size={16} />
                             </button>
                         </div>
                     ))}
                     {questions.length === 0 && (
-                        <div className="empty-state">No questions yet. Add one to get started!</div>
+                        <div 
+                            className="empty-state"
+                            onDragOver={(e) => { e.preventDefault(); }}
+                            onDrop={() => {
+                                if (dragType) {
+                                    let created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswer: 'A', correctAnswers: [], acceptedAnswers: [] };
+                                    if (dragType === 'true_false') {
+                                        created = { type: dragType, question: '', options: { A: 'True', B: 'False' }, correctAnswer: 'A', correctAnswers: [] };
+                                    } else if (dragType === 'short_answer') {
+                                        created = { type: dragType, question: '', options: {}, acceptedAnswers: [], correctAnswer: undefined, correctAnswers: undefined };
+                                    } else if (dragType === 'html_field') {
+                                        created = { type: dragType, question: '', options: {}, correctAnswer: undefined, correctAnswers: undefined, acceptedAnswers: undefined };
+                                    } else if (dragType === 'multiple_choice_multiple') {
+                                        created = { type: dragType, question: '', options: { A: '', B: '', C: '', D: '' }, correctAnswers: [], correctAnswer: 'A', acceptedAnswers: [] };
+                                    }
+                                    const arr = [...questions];
+                                    arr.push(created);
+                                    setQuestions(arr);
+                                    setDragType(null);
+                                    setHoverIndex(-1);
+                                    return;
+                                }
+                            }}
+                            style={{ border: dragType ? '2px dashed var(--primary-color)' : '1px solid var(--border-color)' }}
+                        >
+                            {t('editor.emptyNoQuestions')}
+                        </div>
                     )}
                 </div>
             </div>
+                </div>
+            </div>
 
-            {/* Sticky Action Bar - Redesigned with Better UX */}
+            
+            <div className="editor-footer">
             <div className="action-bar">
                 <div className="action-bar-content">
-                    {/* Left: Export/Import Actions Group */}
                     {isEditMode && (
-                        <div className="action-group">
+                        <div className="action-group" style={{ gap: '0.5rem' }}>
                             <button 
                                 onClick={handleExport} 
                                 className="control-button tertiary" 
                                 disabled={loading}
                                 title="Xuất câu hỏi ra Excel"
+                                style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                             >
-                                <Download size={18} />
+                                <Download size={16} />
                                 <span>{t('common.export')}</span>
                             </button>
                             <label 
                                 className={`control-button tertiary ${loading ? 'disabled' : ''}`}
-                                style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
+                                style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1, border: dragImport ? '2px dashed var(--primary-color)' : 'none', padding: '6px 12px', fontSize: '0.85rem' }}
                                 title="Nhập câu hỏi từ Excel"
+                                onDragOver={(e) => { e.preventDefault(); setDragImport(true); }}
+                                onDragLeave={() => setDragImport(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragImport(false);
+                                    const file = e.dataTransfer?.files?.[0];
+                                    if (file) processImportFile(file);
+                                }}
                             >
-                                <Upload size={18} />
+                                <Upload size={16} />
                                 <span>{t('common.import')}</span>
                                 <input 
                                     type="file" 
@@ -557,18 +833,20 @@ const DumpEditor = () => {
                                 className="control-button tertiary"
                                 disabled={loading}
                                 title="Chia sẻ bộ đề cho nhóm của bạn"
+                                style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                             >
                                 {t('common.shareToGroups')}
                             </button>
                         </div>
                     )}
                     
-                    {/* Right: Primary Actions Group */}
-                    <div className="action-group">
+                    
+                    <div className="action-group" style={{ gap: '0.5rem' }}>
                         <button 
                             onClick={() => navigate(-1)} 
                             className="control-button secondary"
                             disabled={loading}
+                            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                         >
                             {t('common.cancel')}
                         </button>
@@ -576,12 +854,14 @@ const DumpEditor = () => {
                             onClick={handleSave} 
                             className="control-button primary" 
                             disabled={loading}
+                            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                         >
-                            <Save size={18} />
+                            <Save size={16} />
                             <span>{loading ? t('common.loading') : t('common.saveChanges')}</span>
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
 
             {showShareModal && (
@@ -592,7 +872,7 @@ const DumpEditor = () => {
                             <span style={{ color: 'var(--text-secondary)' }}>🔎</span>
                             <input
                                 type="text"
-                                placeholder="Filter groups"
+                                placeholder={t('editor.filterGroups')}
                                 onChange={(e) => {
                                     const q = e.target.value.toLowerCase();
                                     const all = [...ownedGroups];
@@ -602,8 +882,8 @@ const DumpEditor = () => {
                             />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', color: 'var(--text-secondary)' }}>
-                            <span>{selectedGroups.length} selected</span>
-                            <button className="btn-text" onClick={() => setSelectedGroups([])}>Clear selection</button>
+                            <span>{t('editor.selectedCount', { count: selectedGroups.length })}</span>
+                            <button className="btn-text" onClick={() => setSelectedGroups([])}>{t('editor.clearSelection')}</button>
                         </div>
                         <div style={{ maxHeight: '260px', overflow: 'auto', margin: '1rem 0' }}>
                             {(filteredList ?? ownedGroups).map(g => {
@@ -627,23 +907,27 @@ const DumpEditor = () => {
                         </div>
                         <div className="modal-actions" style={{ display: 'flex', gap: '1rem' }}>
                             <button className="control-button secondary" onClick={() => setShowShareModal(false)}>{t('common.cancel')}</button>
-                            <button className="control-button secondary" onClick={async () => { try { await api.setDumpGroups(id, []); setSelectedGroups([]); setShowShareModal(false); alert('Unshared from all groups'); } catch (err) { alert(err.message); } }}>Unshare All</button>
+                            <button className="control-button secondary" onClick={async () => { try { await api.setDumpGroups(id, []); setSelectedGroups([]); setShowShareModal(false); alert(t('editor.unshareAll')); } catch (err) { alert(err.message); } }}>{t('editor.unshareAll')}</button>
                             <button className="control-button primary" onClick={submitShareToGroups}>{t('common.saveChanges')}</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Duplicate Handling Modal */}
+            
             {showDuplicateModal && duplicateData && (
                     <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
                         <div className="modal-content" style={{ background: 'var(--bg-card)', padding: '2rem', borderRadius: '8px', maxWidth: '600px' }}>
-                            <h2>Duplicate Questions Detected</h2>
+                            <h2>{t('editor.duplicates.title')}</h2>
                             <p>{duplicateData.message}</p>
                             <ul style={{ maxHeight: '300px', overflowY: 'auto' }}>
                                 {duplicateData.duplicates.map((dup, idx) => (
                                     <li key={idx} style={{ marginBottom: '0.5rem' }}>
-                                        <strong>{dup.question}</strong>
+                                        {(dup.isHtml || /<[^>]+>/.test(dup.question || '')) ? (
+                                            <strong dangerouslySetInnerHTML={{ __html: dup.question }} />
+                                        ) : (
+                                            <strong>{dup.question}</strong>
+                                        )}
                                         {dup.hasChanges && <span style={{ color: 'var(--warning-color)', marginLeft: '0.5rem' }}>(Changed)</span>}
                                     </li>
                                 ))}
@@ -653,26 +937,26 @@ const DumpEditor = () => {
                                     className="control-button secondary" 
                                     onClick={() => setShowDuplicateModal(false)}
                                 >
-                                    Cancel
+                                    {t('common.cancel')}
                                 </button>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <button 
                                         className="control-button secondary" 
                                         onClick={() => handleDuplicateAction('skip')}
                                     >
-                                        Skip Duplicates
+                                        {t('editor.duplicates.skip')}
                                     </button>
                                     <button 
                                         className="control-button secondary" 
                                         onClick={() => handleDuplicateAction('replace')}
                                     >
-                                        Replace Duplicates
+                                        {t('editor.duplicates.replace')}
                                     </button>
                                     <button 
                                         className="control-button primary" 
                                         onClick={() => handleDuplicateAction('merge')}
                                     >
-                                        Merge All
+                                        {t('editor.duplicates.merge')}
                                     </button>
                                 </div>
                             </div>
@@ -680,88 +964,147 @@ const DumpEditor = () => {
                     </div>
                 )}
 
-            {/* Add/Edit Question Modal */}
+            
             {showAddModal && (
                 <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <h3>{editingIndex >= 0 ? 'Edit Question' : 'Add New Question'}</h3>
+                        <h3>{editingIndex >= 0 ? t('editor.editQuestion') : t('editor.addQuestion')}</h3>
                         <button onClick={() => setShowAddModal(false)} className="icon-btn"><X size={24} /></button>
                     </div>
 
                     <div className="form-group">
-                        <label>Question Text</label>
+                        <label>{t('editor.questionType')}</label>
                         <div className="input-wrapper">
-                            <input
-                                type="text"
-                                value={newQuestion.question}
-                                onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
-                                placeholder="Enter the question..."
-                                autoFocus
-                            />
+                            <select
+                                value={newQuestion.type}
+                                onChange={(e) => {
+                                    const nextType = e.target.value;
+                                    let next = { ...newQuestion, type: nextType };
+                                    if (nextType === 'true_false') {
+                                        next = { ...next, options: { A: 'True', B: 'False' }, correctAnswers: [], correctAnswer: 'A' };
+                                    } else if (nextType === 'short_answer') {
+                                        next = { ...next, options: {}, correctAnswers: [], correctAnswer: undefined, acceptedAnswers: [] };
+                                    } else if (nextType === 'html_field') {
+                                        next = { ...next, options: {}, correctAnswers: [], correctAnswer: undefined, acceptedAnswers: undefined };
+                                    } else if (nextType === 'multiple_choice_multiple') {
+                                        next = { ...next, correctAnswers: [] };
+                                    } else {
+                                        next = { ...next, correctAnswers: [], correctAnswer: 'A' };
+                                    }
+                                    setNewQuestion(next);
+                                }}
+                                className="select-input"
+                            >
+                                <option value="multiple_choice_single">{t('editor.types.multipleSingle')}</option>
+                                <option value="multiple_choice_multiple">{t('editor.types.multipleMultiple')}</option>
+                                <option value="true_false">{t('editor.types.trueFalse')}</option>
+                                <option value="short_answer">{t('editor.types.shortAnswer')}</option>
+                                <option value="html_field">{t('editor.types.htmlField')}</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                        {['A', 'B', 'C', 'D'].map((opt) => (
-                            <div key={opt} className="form-group">
-                                <label>Option {opt}</label>
-                                <div className="input-wrapper">
-                                    <span style={{ fontWeight: 'bold', color: 'var(--primary-color)', marginRight: '8px' }}>{opt}</span>
-                                    <input
-                                        type="text"
-                                        value={newQuestion.options[opt]}
-                                        onChange={(e) => setNewQuestion({
-                                            ...newQuestion,
-                                            options: { ...newQuestion.options, [opt]: e.target.value }
-                                        })}
-                                        placeholder={`Option ${opt}`}
-                                    />
-                                </div>
-                            </div>
-                        ))}
                     </div>
 
                     <div className="form-group">
-                        <label>Correct Answers</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
-                            {['A', 'B', 'C', 'D'].map((opt) => {
-                                const checked = (newQuestion.correctAnswers || []).includes(opt);
-                                return (
-                                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={(e) => {
-                                                const prev = newQuestion.correctAnswers || [];
-                                                const next = e.target.checked ? [...prev, opt] : prev.filter(x => x !== opt);
-                                                setNewQuestion({ ...newQuestion, correctAnswers: next });
-                                            }}
-                                        />
-                                        <span style={{ fontWeight: '600' }}>{opt}</span>
-                                    </label>
-                                );
-                            })}
+                        <label>{t('editor.questionText')}</label>
+                        <div className="input-wrapper">
+                            <HtmlEditor
+                                value={newQuestion.question}
+                                onChange={(html) => setNewQuestion({ ...newQuestion, question: html })}
+                            />
                         </div>
-                        <small style={{ color: 'var(--text-secondary)' }}>You can select multiple correct options</small>
+                        <small style={{ color: 'var(--text-secondary)' }}>{t('editor.htmlHint')}</small>
                     </div>
+
+                    {newQuestion.type !== 'short_answer' && newQuestion.type !== 'html_field' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                            {['A', 'B', 'C', 'D'].map((opt) => (
+                                <div key={opt} className="form-group">
+                                    <label>{t('editor.optionLabel', { opt })}</label>
+                                    <div className="input-wrapper">
+                                        <span style={{ fontWeight: 'bold', color: 'var(--primary-color)', marginRight: '8px' }}>{opt}</span>
+                                        <input
+                                            type="text"
+                                            value={newQuestion.options?.[opt] ?? ''}
+                                            onChange={(e) => setNewQuestion({
+                                                ...newQuestion,
+                                                options: { ...newQuestion.options, [opt]: e.target.value }
+                                            })}
+                                            placeholder={t('editor.optionPlaceholder', { opt })}
+                                            disabled={newQuestion.type === 'true_false'}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {newQuestion.type !== 'short_answer' && newQuestion.type !== 'html_field' ? (
+                        <div className="form-group">
+                            <label>{t('editor.correctAnswers')}</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                                {['A', 'B', 'C', 'D'].map((opt) => {
+                                    const checked = (newQuestion.correctAnswers || []).includes(opt);
+                                    const isMultiple = newQuestion.type === 'multiple_choice_multiple';
+                                    return (
+                                        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px' }}>
+                                            <input
+                                                type={isMultiple ? 'checkbox' : 'radio'}
+                                                checked={checked}
+                                                onChange={(e) => {
+                                                    if (isMultiple) {
+                                                        const prev = newQuestion.correctAnswers || [];
+                                                        const next = e.target.checked ? [...prev, opt] : prev.filter(x => x !== opt);
+                                                        setNewQuestion({ ...newQuestion, correctAnswers: next });
+                                                    } else {
+                                                        setNewQuestion({ ...newQuestion, correctAnswers: [opt], correctAnswer: opt });
+                                                    }
+                                                }}
+                                                name="correct-selection"
+                                            />
+                                            <span style={{ fontWeight: '600' }}>{opt}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            {newQuestion.type === 'multiple_choice_multiple' && (
+                                <small style={{ color: 'var(--text-secondary)' }}>{t('editor.multipleCorrectHint')}</small>
+                            )}
+                        </div>
+                    ) : newQuestion.type === 'short_answer' ? (
+                        <div className="form-group">
+                            <label>{t('editor.acceptedAnswers')}</label>
+                            <div className="input-wrapper">
+                                <input
+                                    type="text"
+                                    value={(newQuestion.acceptedAnswers || []).join(', ')}
+                                    onChange={(e) => {
+                                        const parts = e.target.value.split(',').map(s => s.trim());
+                                        setNewQuestion({ ...newQuestion, acceptedAnswers: parts });
+                                    }}
+                                    placeholder={t('editor.acceptedAnswers')}
+                                />
+                            </div>
+                            <small style={{ color: 'var(--text-secondary)' }}>{t('editor.addAnswer')}</small>
+                        </div>
+                    ) : null}
 
                         <div className="modal-actions">
                             <button 
                                 onClick={() => setShowAddModal(false)} 
                                 className="control-button secondary"
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                             <button 
                                 onClick={handleSaveQuestion} 
                                 className="control-button primary"
                             >
                                 <Check size={18} />
-                                <span>{editingIndex >= 0 ? 'Update Question' : 'Add Question'}</span>
+                                <span>{editingIndex >= 0 ? t('editor.updateQuestion') : t('editor.addQuestion')}</span>
                             </button>
                         </div>
-                    </div>
+                </div>
                 </div>
             )}
         </div>

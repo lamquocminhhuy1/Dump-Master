@@ -30,7 +30,14 @@ const storage = multer.diskStorage({
         cb(null, Date.now() + '-' + file.originalname)
     }
 });
-const upload = multer({ storage });
+const upload = multer({ 
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if ((file.mimetype || '').startsWith('image/')) cb(null, true);
+        else cb(new Error('Only image files are allowed'));
+    }
+});
 
 // Middleware
 const authenticateToken = (req, res, next) => {
@@ -326,7 +333,7 @@ app.get('/api/dumps/:id', authenticateToken, async (req, res) => {
 
 app.post('/api/dumps', authenticateToken, async (req, res) => {
     try {
-        const { name, questions, isPublic, timeLimit, showAnswerImmediately, category } = req.body;
+        const { name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage } = req.body;
         const dump = await Dump.create({
             name,
             questions,
@@ -334,6 +341,7 @@ app.post('/api/dumps', authenticateToken, async (req, res) => {
             timeLimit: timeLimit || 0,
             showAnswerImmediately: showAnswerImmediately !== undefined ? showAnswerImmediately : true,
             category: category || 'Uncategorized',
+            coverImage: coverImage || null,
             UserId: req.user.id
         });
         if (Array.isArray(questions)) {
@@ -363,14 +371,15 @@ app.put('/api/dumps/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
-        const { name, questions, isPublic, timeLimit, showAnswerImmediately, category } = req.body;
+        const { name, questions, isPublic, timeLimit, showAnswerImmediately, category, coverImage } = req.body;
         await dump.update({
             name,
             questions,
             isPublic,
             timeLimit,
             showAnswerImmediately,
-            category
+            category,
+            coverImage: coverImage !== undefined ? (coverImage || null) : dump.coverImage
         });
         if (Array.isArray(questions)) {
             await Question.destroy({ where: { DumpId: dump.id } });
@@ -1233,6 +1242,13 @@ sequelize.sync().then(async () => {
         } catch {
             console.log('Groups.isActive already exists');
         }
+        // Add coverImage to Dumps if missing
+        try {
+            await qi.addColumn('Dumps', 'coverImage', { type: DataTypes.STRING, allowNull: true });
+            console.log('Added Dumps.coverImage column');
+        } catch {
+            console.log('Dumps.coverImage already exists');
+        }
     } catch (e) {
         console.warn('Schema ensure step failed:', e.message);
     }
@@ -1331,7 +1347,8 @@ app.get('/api/groups/summary', authenticateToken, async (req, res) => {
                 owner: g.User?.username || '',
                 memberCount: count,
                 updatedAt: g.updatedAt,
-                type: g.UserId === req.user.id ? 'owned' : 'member'
+                type: g.UserId === req.user.id ? 'owned' : 'member',
+                isActive: !!g.isActive
             });
         }
         res.json(results);
@@ -1570,5 +1587,26 @@ app.get(/^\/(?!api).*/, (req, res) => {
         res.sendFile(indexPath);
     } catch {
         res.status(500).send('Server error');
+    }
+});
+app.post('/api/uploads/image', authenticateToken, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        const url = `/uploads/${req.file.filename}`;
+        res.json({ url });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Error handler to ensure JSON responses (including Multer errors)
+app.use((err, req, res, next) => {
+    if (err) {
+        const status = err.status || 500;
+        res.status(status).json({ error: err.message || 'Server error' });
+    } else {
+        next();
     }
 });

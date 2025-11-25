@@ -4,13 +4,14 @@ import { api } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import FileUpload from '../components/FileUpload';
 import { parseExcelFile } from '../utils/excelParser';
-import { Play, Trash2, Clock, Plus, Edit, Search, Loader2 } from 'lucide-react';
+import { Play, Trash2, Clock, Plus, Edit, Search, Loader2, Upload } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 
 const Dashboard = () => {
     const { user } = useAuth();
     const [dumps, setDumps] = useState([]);
     const [showUpload, setShowUpload] = useState(false);
+    const [showAddModal, setShowAddModal] = useState(false);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('my'); // 'my' | 'public' | 'group'
@@ -330,7 +331,7 @@ const Dashboard = () => {
                         </select>
                         <button 
                             className="add-button" 
-                            onClick={() => setShowUpload(!showUpload)}
+                            onClick={() => setShowAddModal(true)}
                             aria-label="Add new dump"
                             style={{ flexShrink: 0 }}
                         >
@@ -376,6 +377,33 @@ const Dashboard = () => {
                     </div>
                 )}
 
+                {showAddModal && (
+                    <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <h3>{t('button.addNew')}</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', marginTop: '1rem' }}>
+                                <button 
+                                    className="control-button primary" 
+                                    onClick={() => { setShowAddModal(false); navigate('/dump/new'); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
+                                >
+                                    <Plus size={18} /> {t('common.create')}
+                                </button>
+                                <button 
+                                    className="control-button secondary" 
+                                    onClick={() => { setShowAddModal(false); setShowUpload(true); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
+                                >
+                                    <Upload size={18} /> {t('modal.quickUpload.title')}
+                                </button>
+                            </div>
+                            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+                                <button className="control-button secondary" onClick={() => setShowAddModal(false)}>{t('common.close')}</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Loading State */}
                 {loading && (
                     <div style={{ 
@@ -397,7 +425,11 @@ const Dashboard = () => {
                     {dumps.map(dump => (
                         <div key={dump.id} className="dump-card">
                             <div className="card-image">
-                                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(dump.name)}&background=random&size=400`} alt="Course Cover" />
+                                {(() => {
+                                    const src = (dump.coverImage && String(dump.coverImage).length > 0) ? dump.coverImage : `https://ui-avatars.com/api/?name=${encodeURIComponent(dump.name)}&background=random&size=400`;
+                                    const resolved = src.startsWith('/uploads/') ? `http://localhost:3000${src}` : src;
+                                    return (<img src={resolved} alt="Course Cover" />);
+                                })()}
                                 <div className="card-badge">
                                     {dump.category || (dump.isPublic ? 'Public' : 'Private')}
                                 </div>
@@ -487,15 +519,7 @@ const Dashboard = () => {
                                     ? t('empty.hint.my')
                                     : t('empty.hint.public')}
                             </p>
-                            {(!searchInput && category === 'All' && activeTab === 'my') && (
-                                <button 
-                                    className="add-button"
-                                    onClick={() => setShowUpload(true)}
-                                    style={{ marginTop: '1rem' }}
-                                >
-                                    <Plus size={20} /> {t('empty.createFirst')}
-                                </button>
-                            )}
+                            
                         </div>
                     )}
                 </div>
